@@ -1,0 +1,27 @@
+# Composer
+/vendor/
+composer.lock
+
+# Environment
+.env
+.env.local
+
+# Logs
+/logs/
+/logs/*.log
+
+# Storage
+/storage/*.db
+/storage/*.json
+/storage/dead_letter_*
+/storage 
+
+# IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db 

@@ -1,0 +1,26 @@
+{
+    "name": "app/shopify-powerbody-sync",
+    "description": "Bidirectional synchronization service between PowerBody Dropshipping API and Shopify Admin API",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=7.4",
+        "vlucas/phpdotenv": "^5.5",
+        "guzzlehttp/guzzle": "^7.5",
+        "monolog/monolog": "^2.8",
+        "ext-soap": "*",
+        "ext-json": "*",
+        "ext-sqlite3": "*"
+    },
+    "scripts": {
+        "sync-products": "php bin/product-sync.php",
+        "sync-orders": "php bin/order-sync.php",
+        "sync-returns": "php bin/return-sync.php",
+        "sync-comments": "php bin/comment-sync.php",
+        "sync": "php bin/sync.php"
+    }
+}
