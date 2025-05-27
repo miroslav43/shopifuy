@@ -114,9 +114,22 @@ class PowerBodyLink
         $this->endCurrentSession();
     }
 
+    /**
+     * Call PowerBody API method with retry mechanism
+     * Ensures proper session handling and JSON formatting of parameters
+     * 
+     * @param string $method The API method to call (e.g. 'dropshipping.getOrders')
+     * @param mixed $params The parameters for the method call (will be JSON encoded if not already a string)
+     * @return mixed The API response
+     */
     private function callWithRetry(string $method, $params = null)
     {
         $this->ensureSession();
+        
+        // Format parameters properly according to PowerBody docs
+        if ($params !== null && !is_string($params)) {
+            $params = json_encode($params);
+        }
         
         $attempt = 0;
         
@@ -127,6 +140,7 @@ class PowerBodyLink
                     $this->login();
                 }
                 
+                // Call PowerBody API method with proper session and parameters
                 $result = $this->client->call($this->session, $method, $params);
                 
                 // Debug response

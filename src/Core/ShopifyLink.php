@@ -20,11 +20,13 @@ class ShopifyLink
     private $config;
     private $retryCount = 3;
     private $rateLimitRemaining = 40; // Default API call limit
+    private $rateLimitMax = 80; // Default max API calls
     private $lastCallTimestamp = 0;
     private $callDelay = 500000; // 500ms in microseconds
     private $locationId;
     private $nextPageUrl = null;
     private $prevPageUrl = null;
+    private $bucket = []; // Leaky bucket for rate limiting
 
     public function __construct()
     {
@@ -63,7 +65,8 @@ class ShopifyLink
             'headers' => [
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
-                'X-Shopify-Access-Token' => $this->config->get('SHOPIFY_ACCESS_TOKEN')
+                'X-Shopify-Access-Token' => $this->config->get('SHOPIFY_ACCESS_TOKEN'),
+                'User-Agent' => 'PHP Shopify Sync App/1.0' // Identifying the app according to Shopify guidelines
             ],
             'handler' => $stack
         ]);
@@ -138,30 +141,67 @@ class ShopifyLink
 
     private function handleRateLimits(ResponseInterface $response): void
     {
+        // Parse Shopify's rate limit header
         if ($response->hasHeader('X-Shopify-Shop-Api-Call-Limit')) {
             $limitHeader = $response->getHeader('X-Shopify-Shop-Api-Call-Limit')[0];
-            list($current, $limit) = explode('/', $limitHeader);
+            list($current, $max) = explode('/', $limitHeader);
             
-            $this->rateLimitRemaining = $limit - $current;
-            $this->logger->debug("Shopify API call limit: $current/$limit");
+            $current = (int)$current;
+            $max = (int)$max;
+            $this->rateLimitMax = $max;
+            $this->rateLimitRemaining = $max - $current;
             
-            // If we're close to the limit, add delay
-            if ($this->rateLimitRemaining < 5) {
-                $this->logger->warning("Approaching Shopify API rate limit. Remaining: {$this->rateLimitRemaining}");
-                sleep(1); // Hard sleep if we're close to limit
+            // Only log when it's useful information, not every request
+            if ($this->rateLimitRemaining < 10) {
+                $this->logger->info("Shopify API call limit: $current/$max (remaining: {$this->rateLimitRemaining})");
+            } else {
+                $this->logger->debug("Shopify API call limit: $current/$max");
+            }
+            
+            // More optimized rate limiting strategy - only slow down when absolutely necessary
+            $percentUsed = ($current / $max) * 100;
+            
+            if ($percentUsed > 90) {
+                // Only slow down significantly when very close to limit
+                $this->logger->warning("Shopify API rate limit over 90% used. Slowing down requests.");
+                usleep(500000); // 500ms delay instead of 2s
+            } else if ($percentUsed > 75) {
+                // Modest slowdown when getting close to limit
+                usleep(250000); // 250ms
+            }
+            
+            // Store timestamp in leaky bucket for tracking request frequency
+            $now = time();
+            
+            // Clean out entries older than 30 seconds (instead of 60)
+            $this->bucket = array_filter($this->bucket, function($timestamp) use ($now) {
+                return ($now - $timestamp) < 30;
+            });
+            
+            // Add current timestamp to bucket
+            $this->bucket[] = $now;
+            
+            // Only add additional delay if we're extremely busy
+            // Reduced threshold from 0.7 to 0.85 of max capacity
+            if (count($this->bucket) > ($max * 0.85)) {
+                // Calculate a smaller delay based on how close we are to the limit
+                $delay = 0.5 + ((count($this->bucket) / $max) * 0.5); // Maximum 1 second
+                $this->logger->info("Adding additional delay of {$delay}s due to high request frequency");
+                usleep($delay * 1000000);
             }
         }
         
         // Parse Link header for pagination
         $this->parseLinkHeader($response);
         
-        // Respect the minimum call delay
+        // Reduce base delay between API calls
+        $minDelay = 100000; // 100ms minimum delay (down from 250ms)
+        
         $now = microtime(true);
         $elapsed = ($now - $this->lastCallTimestamp) * 1000000; // to microseconds
         
-        if ($elapsed < $this->callDelay) {
-            $sleepFor = ($this->callDelay - $elapsed) / 1000000; // to seconds
-            usleep(($this->callDelay - $elapsed));
+        if ($elapsed < $minDelay) {
+            usleep($minDelay - $elapsed);
         }
         
         $this->lastCallTimestamp = microtime(true);
@@ -568,5 +608,141 @@ class ShopifyLink
         }
         
         return $results;
+    }
+
+    /**
+     * Get a collection by its title
+     * 
+     * @param string $title Collection title to search for
+     * @return array|null Collection data if found, null otherwise
+     */
+    public function getCollectionByTitle(string $title): ?array
+    {
+        $this->logger->info("Looking for collection with title: $title");
+        
+        // First check custom collections
+        $params = [
+            'title' => $title,
+            'limit' => 1
+        ];
+        
+        $response = $this->request('GET', "custom_collections.json?" . http_build_query($params));
+        if (!empty($response['custom_collections'])) {
+            $this->logger->info("Found existing custom collection: {$title}");
+            return $response['custom_collections'][0];
+        }
+        
+        // Then check smart collections
+        $response = $this->request('GET', "smart_collections.json?" . http_build_query($params));
+        if (!empty($response['smart_collections'])) {
+            $this->logger->info("Found existing smart collection: {$title}");
+            return $response['smart_collections'][0];
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Create a custom collection
+     * 
+     * @param string $title Collection title
+     * @param string $description Optional collection description
+     * @return array|null Created collection data
+     */
+    public function createCollection(string $title, string $description = ''): ?array
+    {
+        $this->logger->info("Creating collection: $title");
+        
+        $collectionData = [
+            'custom_collection' => [
+                'title' => $title,
+                'body_html' => $description,
+                'published' => true
+            ]
+        ];
+        
+        $response = $this->request('POST', 'custom_collections.json', $collectionData);
+        
+        if (!empty($response['custom_collection'])) {
+            $this->logger->info("Successfully created collection: {$title}");
+            return $response['custom_collection'];
+        } else {
+            $this->logger->error("Failed to create collection: {$title}");
+            return null;
+        }
+    }
+    
+    /**
+     * Add a product to a collection
+     * 
+     * @param int $productId Shopify product ID
+     * @param int $collectionId Shopify collection ID
+     * @return bool Success indicator
+     */
+    public function addProductToCollection(int $productId, int $collectionId): bool
+    {
+        $this->logger->info("Adding product {$productId} to collection {$collectionId}");
+        
+        // Add product to collection using collect endpoint
+        $collectData = [
+            'collect' => [
+                'product_id' => $productId,
+                'collection_id' => $collectionId
+            ]
+        ];
+        
+        try {
+            $response = $this->request('POST', 'collects.json', $collectData);
+            
+            if (!empty($response['collect'])) {
+                $this->logger->info("Successfully added product {$productId} to collection {$collectionId}");
+                return true;
+            }
+        } catch (Exception $e) {
+            // If it's a duplicate, consider it a success
+            if (strpos($e->getMessage(), 'already exists') !== false) {
+                $this->logger->debug("Product {$productId} is already in collection {$collectionId}");
+                return true;
+            }
+            
+            $this->logger->error("Failed to add product {$productId} to collection {$collectionId}: {$e->getMessage()}");
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Get or create a collection by title
+     * 
+     * @param string $title Collection title
+     * @return array|null Collection data
+     */
+    public function getOrCreateCollection(string $title): ?array
+    {
+        $collection = $this->getCollectionByTitle($title);
+        
+        if (!$collection) {
+            $collection = $this->createCollection($title);
+        }
+        
+        return $collection;
+    }
+    
+    /**
+     * Delete a product from Shopify
+     * 
+     * @param int $productId The product ID to delete
+     * @return bool Success indicator
+     */
+    public function deleteProduct(int $productId): bool
+    {
+        $this->logger->info('Deleting product from Shopify', ['product_id' => $productId]);
+        try {
+            $this->request('DELETE', "products/{$productId}.json");
+            return true;
+        } catch (Exception $e) {
+            $this->logger->error('Failed to delete product: ' . $e->getMessage(), ['product_id' => $productId]);
+            return false;
+        }
     }
 } 

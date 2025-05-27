@@ -14,7 +14,9 @@ composer.lock
 /storage/*.db
 /storage/*.json
 /storage/dead_letter_*
-/storage 
+/storage/cache/
+/storage/debug/
+
 
 # IDE
 .idea/
@@ -25,3 +27,5 @@ composer.lock
 # OS
 .DS_Store
 Thumbs.db 
+
+*.bat

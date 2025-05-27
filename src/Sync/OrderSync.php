@@ -5,7 +5,6 @@ namespace App\Sync;
 use App\Core\PowerBodyLink;
 use App\Core\ShopifyLink;
 use App\Core\Database;
-use App\Core\WorkerManager;
 use App\Logger\Factory as LoggerFactory;
 use Exception;
 use DateTime;
@@ -17,25 +16,28 @@ class OrderSync
     private Database $db;
     private $logger;
     private string $storageDir;
-    private bool $useWorkers = true;
-    private int $workerCount = 4;
+    private string $orderCacheDir;
+    private int $cacheExpirationHours = 2; // Cache expires after 2 hours
 
-    public function __construct(bool $useWorkers = true, int $workerCount = 4)
+    public function __construct()
     {
         $this->logger = LoggerFactory::getInstance('order-sync');
         $this->powerbody = new PowerBodyLink();
         $this->shopify = new ShopifyLink();
         $this->db = Database::getInstance();
         $this->storageDir = dirname(__DIR__, 2) . '/storage';
-        $this->useWorkers = $useWorkers;
-        $this->workerCount = max(1, min($workerCount, 16)); // Limit to 1-16 workers
+        $this->orderCacheDir = $this->storageDir . '/cache/orders';
+        
+        // Ensure cache directory exists
+        if (!is_dir($this->orderCacheDir)) {
+            mkdir($this->orderCacheDir, 0755, true);
+        }
     }
 
     public function sync(): void
     {
         try {
             $this->logger->info('Starting order sync');
-            $startTime = microtime(true);
             
             // 1. Get orders from Shopify that need to be sent to PowerBody
             $shopifyOrders = $this->getUnfulfilledShopifyOrders();
@@ -45,14 +47,9 @@ class OrderSync
             } else {
                 $this->logger->info('Found ' . count($shopifyOrders) . ' Shopify orders to sync');
                 
-                // 2. Process orders using the appropriate method
-                if ($this->useWorkers && count($shopifyOrders) > 1) {
-                    $this->processOrdersWithWorkers($shopifyOrders);
-                } else {
-                    // Process orders sequentially for small batches or if workers are disabled
-                    foreach ($shopifyOrders as $order) {
-                        $this->processShopifyOrder($order);
-                    }
+                // 2. Process orders
+                foreach ($shopifyOrders as $order) {
+                    $this->processShopifyOrder($order);
                 }
             }
             
@@ -62,9 +59,7 @@ class OrderSync
             // 4. Update sync state
             $this->db->updateSyncState('order');
             
-            $endTime = microtime(true);
-            $duration = round($endTime - $startTime, 2);
-            $this->logger->info("Order sync completed successfully in {$duration} seconds");
+            $this->logger->info('Order sync completed successfully');
         } catch (Exception $e) {
             $this->logger->error('Order sync failed: ' . $e->getMessage());
             throw $e;
@@ -72,36 +67,19 @@ class OrderSync
     }
 
     /**
-     * Process orders using parallel workers
+     * Get unfulfilled orders from Shopify
+     * 
+     * @return array Array of unfulfilled orders
      */
-    private function processOrdersWithWorkers(array $shopifyOrders): void
+    public function getUnfulfilledShopifyOrders(): array
     {
-        $orderCount = count($shopifyOrders);
-        $this->logger->info("Processing {$orderCount} orders with {$this->workerCount} parallel workers");
-        
-        // Create worker manager
-        $workerManager = new WorkerManager(
-            'OrderSyncWorker',
-            dirname(__DIR__, 2) . '/bin/worker.php',
-            $this->workerCount
-        );
-        
-        // Process orders in parallel
-        $results = $workerManager->processItems($shopifyOrders);
-        
-        // Log results
-        $successCount = count($results);
-        $failedCount = $orderCount - $successCount;
-        
-        $this->logger->info("Parallel processing completed: {$successCount} successes, {$failedCount} failures");
-        
-        if ($failedCount > 0) {
-            $this->logger->warning("Some orders failed to sync ({$failedCount} of {$orderCount})");
+        // Check if we have a valid cache
+        $cachedOrders = $this->getOrdersFromCache();
+        if ($cachedOrders !== null) {
+            $this->logger->info('Using cached orders data');
+            return $cachedOrders;
         }
-    }
-
-    private function getUnfulfilledShopifyOrders(): array
-    {
+        
         // Get last sync time
         $lastSyncTime = $this->db->getLastSyncTime('order');
         $this->logger->info('Last order sync time: ' . $lastSyncTime);
@@ -158,6 +136,9 @@ class OrderSync
             }
         }
         
+        // Cache the filtered orders
+        $this->cacheOrders($filteredOrders);
+        
         return $filteredOrders;
     }
 
@@ -185,6 +166,21 @@ class OrderSync
         
         // Map Shopify order to PowerBody format
         $powerbodyOrder = $this->mapToPowerbodyOrder($shopifyOrder);
+        
+        // Validate order has all required fields before sending to PowerBody
+        $validationErrors = $this->validatePowerbodyOrder($powerbodyOrder);
+        if (!empty($validationErrors)) {
+            $this->logger->error('Order validation failed, missing required fields', [
+                'order_id' => $shopifyOrder['id'],
+                'errors' => $validationErrors
+            ]);
+            $this->saveDeadLetter('validation_failed', [
+                'shopify_order' => $shopifyOrder,
+                'powerbody_order' => $powerbodyOrder,
+                'validation_errors' => $validationErrors
+            ]);
+            return;
+        }
         
         // Create order in PowerBody
         try {
@@ -265,6 +261,71 @@ class OrderSync
     }
 
     /**
+     * Validate order has all required fields for PowerBody API
+     * 
+     * @param array $order PowerBody order data
+     * @return array List of validation errors
+     */
+    private function validatePowerbodyOrder(array $order): array
+    {
+        $errors = [];
+        
+        // Check address fields
+        $requiredAddressFields = [
+            'name' => 'First name',
+            'surname' => 'Last name',
+            'address1' => 'Address',
+            'postcode' => 'Postal code',
+            'city' => 'City',
+            'country_name' => 'Country',
+            'country_code' => 'Country code',
+            'phone' => 'Phone',
+            'email' => 'Email'
+        ];
+        
+        foreach ($requiredAddressFields as $field => $label) {
+            if (empty($order['address'][$field])) {
+                $errors[] = "Missing required address field: {$label}";
+            }
+        }
+        
+        // Check products
+        if (empty($order['products'])) {
+            $errors[] = "No products in order";
+        } else {
+            foreach ($order['products'] as $index => $product) {
+                $requiredProductFields = [
+                    'sku' => 'SKU',
+                    'name' => 'Product name',
+                    'qty' => 'Quantity',
+                    'price' => 'Price',
+                    'currency' => 'Currency'
+                ];
+                
+                foreach ($requiredProductFields as $field => $label) {
+                    if (empty($product[$field])) {
+                        $errors[] = "Missing required product field: {$label} in product #{$index}";
+                    }
+                }
+            }
+        }
+        
+        // Check other required fields
+        $requiredOrderFields = [
+            'id' => 'Order ID',
+            'date_add' => 'Order date'
+        ];
+        
+        foreach ($requiredOrderFields as $field => $label) {
+            if (empty($order[$field])) {
+                $errors[] = "Missing required order field: {$label}";
+            }
+        }
+        
+        return $errors;
+    }
+
+    /**
      * Check status of an existing order in PowerBody
      */
     private function checkExistingOrderStatus(int $shopifyOrderId, string $powerbodyOrderId): void
@@ -325,7 +386,33 @@ class OrderSync
                 'phone' => $shopifyOrder['customer']['phone'] ?? '',
                 'email' => $shopifyOrder['contact_email'] ?? ''
             ];
+        } else {
+            // Check if we have incomplete shipping address and fill with customer data or defaults
+            if (empty($shipping['first_name']) && isset($shopifyOrder['customer']['first_name'])) {
+                $shipping['first_name'] = $shopifyOrder['customer']['first_name'];
+            }
+            
+            if (empty($shipping['last_name']) && isset($shopifyOrder['customer']['last_name'])) {
+                $shipping['last_name'] = $shopifyOrder['customer']['last_name'];
+            }
+            
+            if (empty($shipping['phone']) && isset($shopifyOrder['customer']['phone'])) {
+                $shipping['phone'] = $shopifyOrder['customer']['phone'];
+            }
+            
+            // Ensure required fields have at least a default value
+            $shipping['first_name'] = $shipping['first_name'] ?? 'Customer';
+            $shipping['last_name'] = $shipping['last_name'] ?? 'Unknown';
+            $shipping['address1'] = $shipping['address1'] ?? 'Address not provided';
+            $shipping['address2'] = $shipping['address2'] ?? '';
+            $shipping['city'] = $shipping['city'] ?? 'City not provided';
+            $shipping['zip'] = $shipping['zip'] ?? '00000';
+            $shipping['province'] = $shipping['province'] ?? '';
+            $shipping['phone'] = $shipping['phone'] ?? '0000000000';
         }
+        
+        // Ensure email is available
+        $email = $shopifyOrder['contact_email'] ?? $shopifyOrder['customer']['email'] ?? 'no-email@example.com';
         
         // Extract products
         $products = [];
@@ -379,7 +466,7 @@ class OrderSync
                 'country_name' => $shipping['country'],
                 'country_code' => $shipping['country_code'],
                 'phone' => $shipping['phone'],
-                'email' => $shopifyOrder['contact_email']
+                'email' => $email
             ],
             'products' => $products
         ];
@@ -704,6 +791,193 @@ class OrderSync
             $this->logger->error('Exception while updating order in PowerBody: ' . $e->getMessage(), [
                 'shopify_order_id' => $shopifyOrderId,
                 'powerbody_order_id' => $powerbodyOrderId
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Cache orders to a JSON file
+     *
+     * @param array $orders The orders to cache
+     * @return bool Whether caching was successful
+     */
+    private function cacheOrders(array $orders): bool
+    {
+        try {
+            $now = new DateTime();
+            $expiration = new DateTime("+{$this->cacheExpirationHours} hours");
+            
+            $cacheData = [
+                'timestamp' => $now->format('c'),
+                'expiration' => $expiration->format('c'),
+                'count' => count($orders),
+                'orders' => $orders
+            ];
+            
+            $cacheFile = $this->orderCacheDir . '/shopify_orders_' . $now->format('Ymd_His') . '.json';
+            file_put_contents($cacheFile, json_encode($cacheData, JSON_PRETTY_PRINT));
+            
+            // Create a symlink or copy to latest.json for easy access
+            $latestFile = $this->orderCacheDir . '/latest.json';
+            if (file_exists($latestFile)) {
+                unlink($latestFile);
+            }
+            file_put_contents($latestFile, json_encode($cacheData, JSON_PRETTY_PRINT));
+            
+            $this->logger->info('Cached ' . count($orders) . ' orders to ' . $cacheFile);
+            return true;
+        } catch (Exception $e) {
+            $this->logger->error('Failed to cache orders: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Get orders from cache if available and not expired
+     *
+     * @return array|null Orders from cache or null if cache is invalid
+     */
+    private function getOrdersFromCache(): ?array
+    {
+        $latestFile = $this->orderCacheDir . '/latest.json';
+        
+        if (!file_exists($latestFile)) {
+            return null;
+        }
+        
+        try {
+            $cacheData = json_decode(file_get_contents($latestFile), true);
+            
+            if (!$cacheData || !isset($cacheData['expiration']) || !isset($cacheData['orders'])) {
+                $this->logger->warning('Invalid cache data format');
+                return null;
+            }
+            
+            $expiration = new DateTime($cacheData['expiration']);
+            $now = new DateTime();
+            
+            if ($now > $expiration) {
+                $this->logger->info('Cache expired at ' . $cacheData['expiration']);
+                return null;
+            }
+            
+            $this->logger->info('Using ' . count($cacheData['orders']) . ' orders from cache, created at ' . $cacheData['timestamp']);
+            return $cacheData['orders'];
+        } catch (Exception $e) {
+            $this->logger->error('Error reading from cache: ' . $e->getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Clear the order cache
+     *
+     * @return bool Whether clearing was successful
+     */
+    public function clearOrderCache(): bool
+    {
+        try {
+            $files = glob($this->orderCacheDir . '/*.json');
+            foreach ($files as $file) {
+                unlink($file);
+            }
+            $this->logger->info('Order cache cleared');
+            return true;
+        } catch (Exception $e) {
+            $this->logger->error('Failed to clear order cache: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Process a specific order (for retrying dead letter orders)
+     *
+     * @param array $shopifyOrder The Shopify order data
+     * @return bool Whether processing was successful
+     */
+    public function processSpecificOrder(array $shopifyOrder): bool
+    {
+        try {
+            $this->logger->info('Retrying processing of Shopify order', ['order_id' => $shopifyOrder['id']]);
+            
+            // Check if order already processed
+            $powerbodyOrderId = $this->db->getPowerbodyOrderId($shopifyOrder['id']);
+            if ($powerbodyOrderId) {
+                $this->logger->info('Order already processed', [
+                    'shopify_order_id' => $shopifyOrder['id'],
+                    'powerbody_order_id' => $powerbodyOrderId
+                ]);
+                return true;
+            }
+            
+            // Map Shopify order to PowerBody format
+            $powerbodyOrder = $this->mapToPowerbodyOrder($shopifyOrder);
+            
+            // Validate order has all required fields before sending to PowerBody
+            $validationErrors = $this->validatePowerbodyOrder($powerbodyOrder);
+            if (!empty($validationErrors)) {
+                $this->logger->error('Order validation failed, missing required fields', [
+                    'order_id' => $shopifyOrder['id'],
+                    'errors' => $validationErrors
+                ]);
+                return false;
+            }
+            
+            // Create order in PowerBody
+            $response = $this->powerbody->createOrder($powerbodyOrder);
+            
+            // PowerBody API returns our request with additional 'api_response' field
+            if (!isset($response['api_response'])) {
+                $this->logger->error('Invalid response from PowerBody API', [
+                    'order_id' => $shopifyOrder['id'],
+                    'response' => $response
+                ]);
+                return false;
+            }
+            
+            $apiResponse = $response['api_response'];
+            
+            switch ($apiResponse) {
+                case 'SUCCESS':
+                    // Successfully created order
+                    $this->db->saveOrderMapping($shopifyOrder['id'], $powerbodyOrder['id']);
+                    
+                    // Update Shopify order with tags and fulfillment status
+                    $this->updateShopifyOrderAfterCreation($shopifyOrder['id']);
+                    
+                    $this->logger->info('Successfully created order in PowerBody', [
+                        'shopify_order_id' => $shopifyOrder['id'],
+                        'powerbody_order_id' => $powerbodyOrder['id']
+                    ]);
+                    return true;
+                    
+                case 'ALREADY_EXISTS':
+                    // Order already exists in PowerBody
+                    $this->logger->warning('Order already exists in PowerBody', [
+                        'shopify_order_id' => $shopifyOrder['id'],
+                        'powerbody_order_id' => $powerbodyOrder['id']
+                    ]);
+                    
+                    // Save mapping anyway to prevent future retries
+                    $this->db->saveOrderMapping($shopifyOrder['id'], $powerbodyOrder['id']);
+                    
+                    // Check current status of order in PowerBody
+                    $this->checkExistingOrderStatus($shopifyOrder['id'], $powerbodyOrder['id']);
+                    return true;
+                    
+                default:
+                    // FAIL or other error
+                    $this->logger->error('Failed to create order in PowerBody', [
+                        'shopify_order_id' => $shopifyOrder['id'],
+                        'powerbody_order_id' => $powerbodyOrder['id'],
+                        'api_response' => $apiResponse
+                    ]);
+                    return false;
+            }
+        } catch (Exception $e) {
+            $this->logger->error('Exception while retrying order in PowerBody: ' . $e->getMessage(), [
+                'shopify_order_id' => $shopifyOrder['id']
             ]);
             return false;
         }

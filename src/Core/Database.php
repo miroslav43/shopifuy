@@ -66,6 +66,28 @@ class Database
             )
         ");
         
+        // Comments sync tracking table
+        $this->db->exec("
+            CREATE TABLE IF NOT EXISTS comment_sync (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                direction VARCHAR(50) NOT NULL,
+                comment_id VARCHAR(255) NOT NULL,
+                synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(direction, comment_id)
+            )
+        ");
+        
+        // Refund mapping table
+        $this->db->exec("
+            CREATE TABLE IF NOT EXISTS refund_mapping (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                shopify_refund_id INTEGER NOT NULL,
+                powerbody_refund_id VARCHAR(255) NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(shopify_refund_id, powerbody_refund_id)
+            )
+        ");
+        
         // Initialize sync state records if they don't exist
         $types = ['product', 'order', 'comment', 'refund'];
         foreach ($types as $type) {
@@ -298,6 +320,165 @@ class Database
         } catch (Exception $e) {
             $this->logger->error("Failed to get last sync time: " . $e->getMessage(), [
                 'sync_type' => $syncType
+            ]);
+            return null;
+        }
+    }
+
+    // Comment sync methods
+    
+    /**
+     * Mark a comment as synced between systems
+     * 
+     * @param string $direction Direction of sync ('powerbody_to_shopify' or 'shopify_to_powerbody')
+     * @param string $commentId Unique identifier for the comment
+     * @return bool Success or failure
+     */
+    public function markCommentSynced(string $direction, string $commentId): bool
+    {
+        try {
+            $stmt = $this->db->prepare("
+                INSERT OR REPLACE INTO comment_sync (direction, comment_id)
+                VALUES (:direction, :comment_id)
+            ");
+            $stmt->bindValue(':direction', $direction, SQLITE3_TEXT);
+            $stmt->bindValue(':comment_id', $commentId, SQLITE3_TEXT);
+            $result = $stmt->execute();
+            
+            $this->logger->debug("Marked comment as synced", [
+                'direction' => $direction,
+                'comment_id' => $commentId
+            ]);
+            
+            return $result !== false;
+        } catch (Exception $e) {
+            $this->logger->error("Failed to mark comment as synced: " . $e->getMessage(), [
+                'direction' => $direction,
+                'comment_id' => $commentId
+            ]);
+            return false;
+        }
+    }
+    
+    /**
+     * Check if a comment has already been synced
+     * 
+     * @param string $direction Direction of sync ('powerbody_to_shopify' or 'shopify_to_powerbody')
+     * @param string $commentId Unique identifier for the comment
+     * @return bool Whether the comment has been synced
+     */
+    public function isCommentSynced(string $direction, string $commentId): bool
+    {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT id FROM comment_sync
+                WHERE direction = :direction AND comment_id = :comment_id
+                LIMIT 1
+            ");
+            $stmt->bindValue(':direction', $direction, SQLITE3_TEXT);
+            $stmt->bindValue(':comment_id', $commentId, SQLITE3_TEXT);
+            $result = $stmt->execute();
+            
+            return $result->fetchArray(SQLITE3_ASSOC) !== false;
+        } catch (Exception $e) {
+            $this->logger->error("Failed to check if comment is synced: " . $e->getMessage(), [
+                'direction' => $direction,
+                'comment_id' => $commentId
+            ]);
+            return false;
+        }
+    }
+    
+    // Refund mapping methods
+    
+    /**
+     * Save mapping between Shopify refund ID and PowerBody refund ID
+     * 
+     * @param int $shopifyRefundId Shopify refund ID
+     * @param string $powerbodyRefundId PowerBody refund ID
+     * @return bool Success or failure
+     */
+    public function saveRefundMapping(int $shopifyRefundId, string $powerbodyRefundId): bool
+    {
+        try {
+            $stmt = $this->db->prepare("
+                INSERT OR REPLACE INTO refund_mapping (shopify_refund_id, powerbody_refund_id)
+                VALUES (:shopify_id, :powerbody_id)
+            ");
+            $stmt->bindValue(':shopify_id', $shopifyRefundId, SQLITE3_INTEGER);
+            $stmt->bindValue(':powerbody_id', $powerbodyRefundId, SQLITE3_TEXT);
+            $result = $stmt->execute();
+            
+            $this->logger->info("Saved refund mapping", [
+                'shopify_refund_id' => $shopifyRefundId,
+                'powerbody_refund_id' => $powerbodyRefundId
+            ]);
+            
+            return $result !== false;
+        } catch (Exception $e) {
+            $this->logger->error("Failed to save refund mapping: " . $e->getMessage(), [
+                'shopify_refund_id' => $shopifyRefundId,
+                'powerbody_refund_id' => $powerbodyRefundId
+            ]);
+            return false;
+        }
+    }
+    
+    /**
+     * Get Shopify refund ID from PowerBody refund ID
+     * 
+     * @param string $powerbodyRefundId PowerBody refund ID
+     * @return int|null Shopify refund ID
+     */
+    public function getShopifyRefundId(string $powerbodyRefundId): ?int
+    {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT shopify_refund_id FROM refund_mapping
+                WHERE powerbody_refund_id = :powerbody_id
+                LIMIT 1
+            ");
+            $stmt->bindValue(':powerbody_id', $powerbodyRefundId, SQLITE3_TEXT);
+            $result = $stmt->execute();
+            
+            if ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+                return (int) $row['shopify_refund_id'];
+            }
+            
+            return null;
+        } catch (Exception $e) {
+            $this->logger->error("Failed to get Shopify refund ID: " . $e->getMessage(), [
+                'powerbody_refund_id' => $powerbodyRefundId
+            ]);
+            return null;
+        }
+    }
+    
+    /**
+     * Get PowerBody refund ID from Shopify refund ID
+     * 
+     * @param int $shopifyRefundId Shopify refund ID
+     * @return string|null PowerBody refund ID
+     */
+    public function getPowerbodyRefundId(int $shopifyRefundId): ?string
+    {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT powerbody_refund_id FROM refund_mapping
+                WHERE shopify_refund_id = :shopify_id
+                LIMIT 1
+            ");
+            $stmt->bindValue(':shopify_id', $shopifyRefundId, SQLITE3_INTEGER);
+            $result = $stmt->execute();
+            
+            if ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+                return $row['powerbody_refund_id'];
+            }
+            
+            return null;
+        } catch (Exception $e) {
+            $this->logger->error("Failed to get PowerBody refund ID: " . $e->getMessage(), [
+                'shopify_refund_id' => $shopifyRefundId
             ]);
             return null;
         }
