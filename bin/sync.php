@@ -4,6 +4,8 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use App\Sync\ProductSync;
 use App\Sync\OrderSync;
+use App\Sync\CommentSync;
+use App\Sync\ReturnSync;
 use App\Logger\Factory as LoggerFactory;
 
 $logger = LoggerFactory::getInstance('cli');
@@ -12,29 +14,15 @@ $logger->info('Starting sync process');
 // Parameters
 $syncProducts = isset($argv[1]) && ($argv[1] === 'all' || $argv[1] === 'products');
 $syncOrders = isset($argv[1]) && ($argv[1] === 'all' || $argv[1] === 'orders');
+$syncComments = isset($argv[1]) && ($argv[1] === 'all' || $argv[1] === 'comments');
+$syncReturns = isset($argv[1]) && ($argv[1] === 'all' || $argv[1] === 'returns');
 
-// Worker configuration
-$useWorkers = true;
-$workerCount = 4;
-
-// Parse additional arguments
-foreach ($argv as $arg) {
-    if ($arg === '--no-workers') {
-        $useWorkers = false;
-        $logger->info('Worker mode disabled by command line argument');
-    } elseif (strpos($arg, '--workers=') === 0) {
-        $count = (int)substr($arg, 10);
-        if ($count > 0) {
-            $workerCount = $count;
-            $logger->info("Worker count set to {$workerCount} from command line");
-        }
-    }
-}
-
-if (!$syncProducts && !$syncOrders) {
+if (!$syncProducts && !$syncOrders && !$syncComments && !$syncReturns) {
     // Default to run everything if no parameters
     $syncProducts = true;
     $syncOrders = true;
+    $syncComments = true;
+    $syncReturns = true;
 }
 
 $exitCode = 0;
@@ -42,30 +30,30 @@ $exitCode = 0;
 try {
     if ($syncProducts) {
         $logger->info('Starting product sync');
-        
-        if ($useWorkers) {
-            $logger->info("Using worker-based architecture with {$workerCount} workers for product sync");
-        } else {
-            $logger->info("Using direct synchronization for product sync (no workers)");
-        }
-        
-        $productSync = new ProductSync($useWorkers, $workerCount);
+        $productSync = new ProductSync();
         $productSync->sync();
         $logger->info('Product sync completed');
     }
     
     if ($syncOrders) {
         $logger->info('Starting order sync');
-        
-        if ($useWorkers) {
-            $logger->info("Using worker-based architecture with {$workerCount} workers for order sync");
-        } else {
-            $logger->info("Using direct synchronization for order sync (no workers)");
-        }
-        
-        $orderSync = new OrderSync($useWorkers, $workerCount);
+        $orderSync = new OrderSync();
         $orderSync->sync();
         $logger->info('Order sync completed');
+    }
+    
+    if ($syncComments) {
+        $logger->info('Starting comment sync');
+        $commentSync = new CommentSync();
+        $commentSync->sync();
+        $logger->info('Comment sync completed');
+    }
+    
+    if ($syncReturns) {
+        $logger->info('Starting return/refund sync');
+        $returnSync = new ReturnSync();
+        $returnSync->sync();
+        $logger->info('Return/refund sync completed');
     }
 } catch (Exception $e) {
     $logger->error('Sync process encountered an error: ' . $e->getMessage());

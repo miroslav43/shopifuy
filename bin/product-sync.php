@@ -7,36 +7,35 @@ use App\Logger\Factory as LoggerFactory;
 
 $logger = LoggerFactory::getInstance('cli');
 
-// Parse command line arguments
-$useWorkers = true; // Default to using workers
-$workerCount = 4;   // Default worker count
+// Process command line options
+$options = getopt('hd', ['help', 'debug', 'skip-draft']);
 
-// Parse arguments
-foreach ($argv as $arg) {
-    if ($arg === '--no-workers') {
-        $useWorkers = false;
-        $logger->info('Worker mode disabled by command line argument');
-    } elseif (strpos($arg, '--workers=') === 0) {
-        $count = (int)substr($arg, 10);
-        if ($count > 0) {
-            $workerCount = $count;
-            $logger->info("Worker count set to {$workerCount} from command line");
-        }
-    }
+// Check for help flag
+if (isset($options['h']) || isset($options['help'])) {
+    echo "Product Sync Tool\n";
+    echo "--------------\n";
+    echo "Usage: php bin/product-sync.php [options]\n\n";
+    echo "Options:\n";
+    echo "  -h, --help       Show this help message\n";
+    echo "  -d, --debug      Enable debug mode (save detailed product data)\n";
+    echo "  --skip-draft     Skip products with zero inventory instead of creating them as draft\n";
+    exit(0);
 }
+
+// Check for debug mode
+$debug = isset($options['d']) || isset($options['debug']);
+
+// Check for skip-draft flag
+$skipDraft = isset($options['skip-draft']);
 
 // Catch any errors
 try {
     $logger->info('Starting product sync CLI script');
     
-    if ($useWorkers) {
-        $logger->info("Using worker-based architecture with {$workerCount} workers");
-    } else {
-        $logger->info("Using direct synchronization (no workers)");
-    }
-    
-    $productSync = new ProductSync($useWorkers, $workerCount);
+    // Pass the options to ProductSync constructor
+    $productSync = new ProductSync($debug, $skipDraft);
     $productSync->sync();
+    
     $logger->info('Product sync completed');
     exit(0);
 } catch (Exception $e) {
