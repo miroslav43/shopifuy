@@ -56,7 +56,7 @@ class OrderSync
             // 3. Check PowerBody for updates to existing orders
             $this->updateExistingOrders();
             
-            // 4. Update sync state
+            // 4. Update sync state for timestamp tracking only
             $this->db->updateSyncState('order');
             
             $this->logger->info('Order sync completed successfully');
@@ -115,24 +115,15 @@ class OrderSync
             }
         } while ($params !== null && isset($params['page_info']));
         
-        // Filter orders to only those with PowerBody products
+        // Filter orders that haven't been synced to PowerBody yet (no PB_SYNCED tag)
         $filteredOrders = [];
         foreach ($allOrders as $order) {
-            $hasPowerbodyProducts = false;
+            // Check if order has PB_SYNCED tag
+            $tags = isset($order['tags']) ? explode(',', $order['tags']) : [];
+            $tags = array_map('trim', $tags);
             
-            foreach ($order['line_items'] as $item) {
-                if ($this->isProductFromPowerbody($item)) {
-                    $hasPowerbodyProducts = true;
-                    break;
-                }
-            }
-            
-            if ($hasPowerbodyProducts) {
-                // Check if this order is already sent to PowerBody
-                $powerbodyOrderId = $this->db->getPowerbodyOrderId($order['id']);
-                if (!$powerbodyOrderId) {
-                    $filteredOrders[] = $order;
-                }
+            if (!in_array('PB_SYNCED', $tags)) {
+                $filteredOrders[] = $order;
             }
         }
         
@@ -142,22 +133,12 @@ class OrderSync
         return $filteredOrders;
     }
 
+    /**
+     * All products are from PowerBody, so always return true
+     */
     private function isProductFromPowerbody(array $lineItem): bool
     {
-        // Check if vendor is PowerBody
-        if (isset($lineItem['vendor']) && $lineItem['vendor'] === 'Powerbody') {
-            return true;
-        }
-        
-        // Check if SKU exists in our product mapping
-        if (!empty($lineItem['sku'])) {
-            $productMapping = $this->db->getProductBysku($lineItem['sku']);
-            if ($productMapping) {
-                return true;
-            }
-        }
-        
-        return false;
+        return true; // All products are from PowerBody
     }
 
     private function processShopifyOrder(array $shopifyOrder): void
@@ -201,7 +182,8 @@ class OrderSync
             switch ($apiResponse) {
                 case 'SUCCESS':
                     // Successfully created order
-                    $this->db->saveOrderMapping($shopifyOrder['id'], $powerbodyOrder['id']);
+                    // Update Shopify order with PB_SYNCED tag
+                    $this->addPbSyncedTag($shopifyOrder['id']);
                     
                     // Update Shopify order with tags and fulfillment status
                     $this->updateShopifyOrderAfterCreation($shopifyOrder['id']);
@@ -219,8 +201,8 @@ class OrderSync
                         'powerbody_order_id' => $powerbodyOrder['id']
                     ]);
                     
-                    // Save mapping anyway to prevent future retries
-                    $this->db->saveOrderMapping($shopifyOrder['id'], $powerbodyOrder['id']);
+                    // Add PB_SYNCED tag to prevent future retries
+                    $this->addPbSyncedTag($shopifyOrder['id']);
                     
                     // Check current status of order in PowerBody
                     $this->checkExistingOrderStatus($shopifyOrder['id'], $powerbodyOrder['id']);
@@ -257,6 +239,44 @@ class OrderSync
             
             // Save to dead letter for retry
             $this->saveDeadLetter('exception', $shopifyOrder);
+        }
+    }
+
+    /**
+     * Add PB_SYNCED tag to a Shopify order
+     */
+    private function addPbSyncedTag(int $orderId): void
+    {
+        try {
+            $order = $this->shopify->getOrder($orderId);
+            
+            if (!$order) {
+                $this->logger->warning('Could not get order from Shopify for tagging', [
+                    'order_id' => $orderId
+                ]);
+                return;
+            }
+            
+            $tags = $order['tags'] ?? '';
+            $tagsArray = array_map('trim', explode(',', $tags));
+            
+            if (!in_array('PB_SYNCED', $tagsArray)) {
+                $tagsArray[] = 'PB_SYNCED';
+            }
+            
+            $updatedTags = implode(', ', $tagsArray);
+            
+            // Update order tags
+            $updateData = ['tags' => $updatedTags];
+            $this->shopify->updateOrder($orderId, $updateData);
+            
+            $this->logger->info('Added PB_SYNCED tag to Shopify order', [
+                'order_id' => $orderId
+            ]);
+        } catch (Exception $e) {
+            $this->logger->error('Failed to add PB_SYNCED tag to Shopify order: ' . $e->getMessage(), [
+                'order_id' => $orderId
+            ]);
         }
     }
 
@@ -366,68 +386,45 @@ class OrderSync
 
     private function mapToPowerbodyOrder(array $shopifyOrder): array
     {
-        // Extract shipping info
+        // Extract shipping info - always use the shipping address directly
         $shipping = $shopifyOrder['shipping_address'] ?? null;
         
+        // Handle missing shipping address (should be rare)
         if (!$shipping) {
             $this->logger->warning('No shipping address in Shopify order', [
                 'order_id' => $shopifyOrder['id']
             ]);
+            
+            // Use customer info as fallback
             $shipping = [
-                'first_name' => $shopifyOrder['customer']['first_name'] ?? '',
-                'last_name' => $shopifyOrder['customer']['last_name'] ?? '',
-                'address1' => '',
+                'first_name' => $shopifyOrder['customer']['first_name'] ?? 'Customer',
+                'last_name' => $shopifyOrder['customer']['last_name'] ?? 'Unknown',
+                'address1' => 'Address not provided',
                 'address2' => '',
-                'city' => '',
-                'zip' => '',
+                'city' => 'City not provided',
+                'zip' => '00000',
                 'province' => '',
-                'country' => '',
-                'country_code' => '',
-                'phone' => $shopifyOrder['customer']['phone'] ?? '',
-                'email' => $shopifyOrder['contact_email'] ?? ''
+                'country' => 'Unknown',
+                'country_code' => 'XX',
+                'phone' => $shopifyOrder['customer']['phone'] ?? '0000000000'
             ];
-        } else {
-            // Check if we have incomplete shipping address and fill with customer data or defaults
-            if (empty($shipping['first_name']) && isset($shopifyOrder['customer']['first_name'])) {
-                $shipping['first_name'] = $shopifyOrder['customer']['first_name'];
-            }
-            
-            if (empty($shipping['last_name']) && isset($shopifyOrder['customer']['last_name'])) {
-                $shipping['last_name'] = $shopifyOrder['customer']['last_name'];
-            }
-            
-            if (empty($shipping['phone']) && isset($shopifyOrder['customer']['phone'])) {
-                $shipping['phone'] = $shopifyOrder['customer']['phone'];
-            }
-            
-            // Ensure required fields have at least a default value
-            $shipping['first_name'] = $shipping['first_name'] ?? 'Customer';
-            $shipping['last_name'] = $shipping['last_name'] ?? 'Unknown';
-            $shipping['address1'] = $shipping['address1'] ?? 'Address not provided';
-            $shipping['address2'] = $shipping['address2'] ?? '';
-            $shipping['city'] = $shipping['city'] ?? 'City not provided';
-            $shipping['zip'] = $shipping['zip'] ?? '00000';
-            $shipping['province'] = $shipping['province'] ?? '';
-            $shipping['phone'] = $shipping['phone'] ?? '0000000000';
         }
         
         // Ensure email is available
         $email = $shopifyOrder['contact_email'] ?? $shopifyOrder['customer']['email'] ?? 'no-email@example.com';
         
-        // Extract products
+        // Extract products - all products are from PowerBody
         $products = [];
         foreach ($shopifyOrder['line_items'] as $item) {
-            if ($this->isProductFromPowerbody($item)) {
-                $products[] = [
-                    'product_id' => $item['product_id'],
-                    'sku' => $item['sku'],
-                    'name' => $item['name'],
-                    'qty' => $item['quantity'],
-                    'price' => $item['price'],
-                    'currency' => $shopifyOrder['currency'],
-                    'tax' => isset($item['tax_lines'][0]) ? ($item['tax_lines'][0]['rate'] * 100) : 0
-                ];
-            }
+            $products[] = [
+                'product_id' => $item['product_id'],
+                'sku' => $item['sku'],
+                'name' => $item['name'],
+                'qty' => $item['quantity'],
+                'price' => $item['price'],
+                'currency' => $shopifyOrder['currency'],
+                'tax' => isset($item['tax_lines'][0]) ? ($item['tax_lines'][0]['rate'] * 100) : 0
+            ];
         }
         
         // Get shipping price
@@ -444,7 +441,7 @@ class OrderSync
             }
         }
 
-        // Map to PowerBody format
+        // Map to PowerBody format - directly using Shopify fields
         return [
             'id' => 'shopify_' . $shopifyOrder['order_number'], // Use unique ID
             'status' => 'pending', // Start with pending status
@@ -548,30 +545,46 @@ class OrderSync
             
             $this->logger->info('Fetched ' . count($powerbodyOrders) . ' orders from PowerBody');
             
+            // Find orders in Shopify that have been synced to PowerBody (have PB_SYNCED tag)
+            $params = [
+                'status' => 'any',
+                'tag' => 'PB_SYNCED', // Use tag to find synced orders
+                'created_at_min' => (new DateTime('-7 days'))->format('c'),
+                'limit' => 250
+            ];
+            
+            $shopifyOrders = $this->shopify->getOrders($params);
+            
+            // Process order updates from PowerBody to Shopify
             foreach ($powerbodyOrders as $pbOrder) {
                 if (empty($pbOrder['order_id']) || !isset($pbOrder['status'])) {
                     continue;
                 }
                 
-                // Get corresponding Shopify order
-                $shopifyOrderId = $this->db->getShopifyOrderId($pbOrder['order_id']);
-                
-                if (!$shopifyOrderId) {
-                    // If not in our database, check if it's a shopify_XXX format ID
-                    if (strpos($pbOrder['order_id'], 'shopify_') === 0) {
-                        $orderNumber = substr($pbOrder['order_id'], 8);
-                        
-                        // Try to find by order number
-                        $params = [
+                // Find matching Shopify order by PowerBody ID (shopify_XXXX)
+                $shopifyOrderId = null;
+                if (strpos($pbOrder['order_id'], 'shopify_') === 0) {
+                    $orderNumber = substr($pbOrder['order_id'], 8);
+                    
+                    // Look for matching order number in Shopify orders
+                    foreach ($shopifyOrders as $shopifyOrder) {
+                        if ($shopifyOrder['order_number'] == $orderNumber) {
+                            $shopifyOrderId = $shopifyOrder['id'];
+                            break;
+                        }
+                    }
+                    
+                    // If not found in the first batch, search directly
+                    if (!$shopifyOrderId) {
+                        $searchParams = [
                             'name' => '#' . $orderNumber,
                             'status' => 'any'
                         ];
                         
-                        $matchingOrders = $this->shopify->getOrders($params);
+                        $matchingOrders = $this->shopify->getOrders($searchParams);
                         
                         if (!empty($matchingOrders)) {
                             $shopifyOrderId = $matchingOrders[0]['id'];
-                            $this->db->saveOrderMapping($shopifyOrderId, $pbOrder['order_id']);
                         }
                     }
                 }

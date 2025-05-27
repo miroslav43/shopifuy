@@ -18,6 +18,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use App\Sync\OrderSync;
 use App\Core\Database;
+use App\Api\ShopifyApi;
 use App\Logger\Factory as LoggerFactory;
 use DateTime;
 
@@ -85,6 +86,7 @@ foreach ($groupedFiles as $reason => $files) {
 // Create OrderSync instance
 $orderSync = new OrderSync();
 $db = Database::getInstance();
+$shopify = new ShopifyApi();
 
 // Counters
 $totalProcessed = 0;
@@ -116,9 +118,9 @@ foreach ($deadLetterFiles as $file) {
             continue;
         }
         
-        // Skip if already processed (check in database)
-        if (isOrderAlreadyProcessed($db, $orderData)) {
-            echo "  SKIPPED: Order already processed and exists in the database.\n";
+        // Skip if already processed (check for PB_SYNCED tag in Shopify)
+        if (isOrderAlreadySynced($shopify, $orderData)) {
+            echo "  SKIPPED: Order already processed and has PB_SYNCED tag in Shopify.\n";
             continue;
         }
         
@@ -259,9 +261,9 @@ function extractDateFromFilename(string $filename): ?DateTime
 }
 
 /**
- * Check if an order is already processed
+ * Check if an order is already synced (has PB_SYNCED tag)
  */
-function isOrderAlreadyProcessed(Database $db, array $orderData): bool
+function isOrderAlreadySynced(ShopifyApi $shopify, array $orderData): bool
 {
     $shopifyOrderId = null;
     
@@ -278,9 +280,23 @@ function isOrderAlreadyProcessed(Database $db, array $orderData): bool
         return false; // Can't determine if processed
     }
     
-    // Check in database
-    $powerbodyOrderId = $db->getPowerbodyOrderId($shopifyOrderId);
-    return !empty($powerbodyOrderId);
+    // Check if order has PB_SYNCED tag
+    try {
+        $order = $shopify->getOrder($shopifyOrderId);
+        
+        if (!$order) {
+            return false;
+        }
+        
+        // Check for PB_SYNCED tag
+        $tags = isset($order['tags']) ? explode(',', $order['tags']) : [];
+        $tags = array_map('trim', $tags);
+        
+        return in_array('PB_SYNCED', $tags);
+    } catch (Exception $e) {
+        // If there's an error getting the order, assume it's not processed
+        return false;
+    }
 }
 
 /**
@@ -353,17 +369,13 @@ function processOrder(OrderSync $orderSync, array $orderData, string $reason): a
             if (isset($shopifyOrder['line_items'])) {
                 $apiResponse['products'] = [];
                 foreach ($shopifyOrder['line_items'] as $item) {
-                    if (isset($item['vendor']) && $item['vendor'] === 'Powerbody' || 
-                        (!empty($item['sku']) && strpos($item['sku'], 'P') === 0)) {
-                        
-                        $apiResponse['products'][] = [
-                            'sku' => $item['sku'] ?? 'N/A',
-                            'name' => $item['name'] ?? 'N/A',
-                            'qty' => $item['quantity'] ?? 0,
-                            'price' => $item['price'] ?? 'N/A',
-                            'currency' => $shopifyOrder['currency'] ?? 'EUR'
-                        ];
-                    }
+                    $apiResponse['products'][] = [
+                        'sku' => $item['sku'] ?? 'N/A',
+                        'name' => $item['name'] ?? 'N/A',
+                        'qty' => $item['quantity'] ?? 0,
+                        'price' => $item['price'] ?? 'N/A',
+                        'currency' => $shopifyOrder['currency'] ?? 'EUR'
+                    ];
                 }
             }
         } else {
@@ -444,24 +456,6 @@ function checkOrderData(array $shopifyOrder): array
     // Check line items
     if (empty($shopifyOrder['line_items'])) {
         $issues[] = "No line items in order";
-    } else {
-        $hasPowerbodyProducts = false;
-        
-        foreach ($shopifyOrder['line_items'] as $item) {
-            if (isset($item['vendor']) && $item['vendor'] === 'Powerbody') {
-                $hasPowerbodyProducts = true;
-                break;
-            }
-            
-            if (!empty($item['sku']) && strpos($item['sku'], 'P') === 0) {
-                $hasPowerbodyProducts = true;
-                break;
-            }
-        }
-        
-        if (!$hasPowerbodyProducts) {
-            $issues[] = "No PowerBody products detected in order";
-        }
     }
     
     return $issues;
