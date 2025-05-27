@@ -73,16 +73,11 @@ class OrderSync
      */
     public function getUnfulfilledShopifyOrders(): array
     {
-        // Check if we have a valid cache
-        $cachedOrders = $this->getOrdersFromCache();
-        if ($cachedOrders !== null) {
-            $this->logger->info('Using cached orders data');
-            return $cachedOrders;
-        }
-        
-        // Get orders from the last 30 days instead of using last sync time
-        $thirtyDaysAgo = (new DateTime('-30 days'))->format('c');
+        // Always fetch fresh orders from Shopify, don't use cache for processing
         $this->logger->info('Fetching orders from the last 30 days');
+        
+        // Get orders from the last 30 days
+        $thirtyDaysAgo = (new DateTime('-30 days'))->format('c');
         
         // Get unfulfilled orders from Shopify
         $allOrders = [];
@@ -112,6 +107,9 @@ class OrderSync
             }
         } while ($params !== null && isset($params['page_info']));
         
+        // Cache all fetched orders for reference only
+        $this->cacheOrders($allOrders);
+        
         // Filter orders that haven't been synced to PowerBody yet (no PB_SYNCED tag)
         $filteredOrders = [];
         foreach ($allOrders as $order) {
@@ -124,8 +122,7 @@ class OrderSync
             }
         }
         
-        // Cache the filtered orders
-        $this->cacheOrders($filteredOrders);
+        $this->logger->info('Found ' . count($filteredOrders) . ' unfulfilled orders without PB_SYNCED tag out of ' . count($allOrders) . ' total orders');
         
         return $filteredOrders;
     }
@@ -807,7 +804,7 @@ class OrderSync
     }
 
     /**
-     * Cache orders to a JSON file
+     * Cache orders to a JSON file (for reference only)
      *
      * @param array $orders The orders to cache
      * @return bool Whether caching was successful
@@ -835,7 +832,7 @@ class OrderSync
             }
             file_put_contents($latestFile, json_encode($cacheData, JSON_PRETTY_PRINT));
             
-            $this->logger->info('Cached ' . count($orders) . ' orders to ' . $cacheFile);
+            $this->logger->info('Cached ' . count($orders) . ' orders to ' . $cacheFile . ' (for reference only)');
             return true;
         } catch (Exception $e) {
             $this->logger->error('Failed to cache orders: ' . $e->getMessage());
@@ -881,7 +878,7 @@ class OrderSync
     }
     
     /**
-     * Clear the order cache
+     * Clear the order cache (reference data only)
      *
      * @return bool Whether clearing was successful
      */
@@ -892,7 +889,7 @@ class OrderSync
             foreach ($files as $file) {
                 unlink($file);
             }
-            $this->logger->info('Order cache cleared');
+            $this->logger->info('Order cache (reference data) cleared');
             return true;
         } catch (Exception $e) {
             $this->logger->error('Failed to clear order cache: ' . $e->getMessage());
