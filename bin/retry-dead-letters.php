@@ -49,7 +49,7 @@ echo "Found " . count($deadLetterFiles) . " dead letter files.\n";
 
 // Filter by date if not processing all
 if (!$processAll) {
-    $cutoffDate = new DateTime('-7 days');
+    $cutoffDate = new DateTime('-30 days');
     $filteredFiles = [];
     
     foreach ($deadLetterFiles as $file) {
@@ -59,7 +59,7 @@ if (!$processAll) {
         }
     }
     
-    echo "Filtered to " . count($filteredFiles) . " files from the last 7 days.\n";
+    echo "Filtered to " . count($filteredFiles) . " files from the last 30 days.\n";
     $deadLetterFiles = $filteredFiles;
 }
 

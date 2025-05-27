@@ -80,19 +80,16 @@ class OrderSync
             return $cachedOrders;
         }
         
-        // Get last sync time
-        $lastSyncTime = $this->db->getLastSyncTime('order');
-        $this->logger->info('Last order sync time: ' . $lastSyncTime);
-        
-        // Format date for Shopify query
-        $createdAtMin = $lastSyncTime ?? (new DateTime('-1 day'))->format('c');
+        // Get orders from the last 30 days instead of using last sync time
+        $thirtyDaysAgo = (new DateTime('-30 days'))->format('c');
+        $this->logger->info('Fetching orders from the last 30 days');
         
         // Get unfulfilled orders from Shopify
         $allOrders = [];
         $params = [
             'status' => 'any',
             'fulfillment_status' => 'unfulfilled',
-            'created_at_min' => $createdAtMin,
+            'created_at_min' => $thirtyDaysAgo,
             'limit' => 250 // Shopify max limit
         ];
         
@@ -527,8 +524,8 @@ class OrderSync
         $this->logger->info('Checking for updates to existing orders');
         
         try {
-            // Get orders from PowerBody (last 7 days)
-            $fromDate = (new DateTime('-7 days'))->format('Y-m-d');
+            // Get orders from PowerBody (last 30 days)
+            $fromDate = (new DateTime('-30 days'))->format('Y-m-d');
             $toDate = (new DateTime())->format('Y-m-d');
             
             $filter = [
@@ -549,7 +546,7 @@ class OrderSync
             $params = [
                 'status' => 'any',
                 'tag' => 'PB_SYNCED', // Use tag to find synced orders
-                'created_at_min' => (new DateTime('-7 days'))->format('c'),
+                'created_at_min' => (new DateTime('-30 days'))->format('c'),
                 'limit' => 250
             ];
             
@@ -914,14 +911,18 @@ class OrderSync
         try {
             $this->logger->info('Retrying processing of Shopify order', ['order_id' => $shopifyOrder['id']]);
             
-            // Check if order already processed
-            $powerbodyOrderId = $this->db->getPowerbodyOrderId($shopifyOrder['id']);
-            if ($powerbodyOrderId) {
-                $this->logger->info('Order already processed', [
-                    'shopify_order_id' => $shopifyOrder['id'],
-                    'powerbody_order_id' => $powerbodyOrderId
-                ]);
-                return true;
+            // Check if order already has PB_SYNCED tag
+            $order = $this->shopify->getOrder($shopifyOrder['id']);
+            if ($order) {
+                $tags = isset($order['tags']) ? explode(',', $order['tags']) : [];
+                $tags = array_map('trim', $tags);
+                
+                if (in_array('PB_SYNCED', $tags)) {
+                    $this->logger->info('Order already processed (has PB_SYNCED tag)', [
+                        'shopify_order_id' => $shopifyOrder['id']
+                    ]);
+                    return true;
+                }
             }
             
             // Map Shopify order to PowerBody format
@@ -954,7 +955,7 @@ class OrderSync
             switch ($apiResponse) {
                 case 'SUCCESS':
                     // Successfully created order
-                    $this->db->saveOrderMapping($shopifyOrder['id'], $powerbodyOrder['id']);
+                    $this->addPbSyncedTag($shopifyOrder['id']);
                     
                     // Update Shopify order with tags and fulfillment status
                     $this->updateShopifyOrderAfterCreation($shopifyOrder['id']);
@@ -972,8 +973,8 @@ class OrderSync
                         'powerbody_order_id' => $powerbodyOrder['id']
                     ]);
                     
-                    // Save mapping anyway to prevent future retries
-                    $this->db->saveOrderMapping($shopifyOrder['id'], $powerbodyOrder['id']);
+                    // Add PB_SYNCED tag to prevent future retries
+                    $this->addPbSyncedTag($shopifyOrder['id']);
                     
                     // Check current status of order in PowerBody
                     $this->checkExistingOrderStatus($shopifyOrder['id'], $powerbodyOrder['id']);
