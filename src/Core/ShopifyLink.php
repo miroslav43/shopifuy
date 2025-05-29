@@ -363,10 +363,11 @@ class ShopifyLink
         return $response['orders'] ?? [];
     }
 
-    public function getOrder(int $orderId): ?array
+    public function getOrder(int $orderId, array $params = []): ?array
     {
         $this->logger->info('Fetching order from Shopify', ['order_id' => $orderId]);
-        $response = $this->request('GET', "orders/{$orderId}.json");
+        $queryString = !empty($params) ? '?' . http_build_query($params) : '';
+        $response = $this->request('GET', "orders/{$orderId}.json{$queryString}");
         return $response['order'] ?? null;
     }
 
@@ -375,6 +376,13 @@ class ShopifyLink
         $this->logger->info('Updating order in Shopify', ['order_id' => $orderId]);
         $response = $this->request('PUT', "orders/{$orderId}.json", ['order' => $orderData]);
         return $response['order'] ?? null;
+    }
+
+    public function getCustomer(int $customerId): ?array
+    {
+        $this->logger->info('Fetching customer from Shopify', ['customer_id' => $customerId]);
+        $response = $this->request('GET', "customers/{$customerId}.json");
+        return $response['customer'] ?? null;
     }
 
     public function createFulfillment(int $orderId, array $fulfillmentData): ?array
@@ -744,5 +752,27 @@ class ShopifyLink
             $this->logger->error('Failed to delete product: ' . $e->getMessage(), ['product_id' => $productId]);
             return false;
         }
+    }
+
+    /**
+     * Make a direct API call to Shopify API endpoint
+     * 
+     * @param string $endpoint API endpoint (without .json)
+     * @param array $params Query parameters
+     * @param string $method HTTP method (default: GET)
+     * @param array $data Data to send for POST/PUT requests
+     * @return array API response
+     */
+    public function get(string $endpoint, array $params = [], string $method = 'GET', array $data = []): array
+    {
+        $this->logger->info('Making direct API call to Shopify', [
+            'endpoint' => $endpoint,
+            'method' => $method
+        ]);
+        
+        $queryString = !empty($params) ? '?' . http_build_query($params) : '';
+        $fullEndpoint = "{$endpoint}.json{$queryString}";
+        
+        return $this->request($method, $fullEndpoint, $data);
     }
 } 
