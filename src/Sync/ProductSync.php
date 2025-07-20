@@ -17,6 +17,7 @@ class ProductSync
     private string $storageDir;
     private bool $debug;
     private bool $skipDraft;
+    private float $markupMultiplier;
 
     public function __construct(bool $debug = false, bool $skipDraft = false)
     {
@@ -27,6 +28,11 @@ class ProductSync
         $this->storageDir = dirname(__DIR__, 2) . '/storage';
         $this->debug = $debug;
         $this->skipDraft = $skipDraft;
+        
+        // Load price markup from environment variable
+        $markupPercent = (float)($_ENV['PRICE_MARKUP_PERCENT'] ?? 22);
+        $this->markupMultiplier = 1 + ($markupPercent / 100);
+        $this->logger->info("Using price markup: {$markupPercent}% (multiplier: {$this->markupMultiplier})");
         
         if ($this->debug) {
             $this->logger->info("Debug mode enabled - saving detailed product info");
@@ -687,7 +693,7 @@ class ProductSync
         $price = $pbProduct['price_tax'] ?? $pbProduct['price'] ?? 0;
         
         // Apply 22% markup to the price
-        $price = round($price * 1.22, 2);
+        $price = round($price * $this->markupMultiplier, 2);
         
         $quantity = (int)($pbProduct['qty'] ?? 0);
         $status = 'active';
@@ -750,7 +756,7 @@ class ProductSync
         // Add price per serving
         if (!empty($pbProduct['price_per_serving'])) {
             // Also apply the same 22% markup to price_per_serving
-            $pricePerServing = round(floatval($pbProduct['price_per_serving']) * 1.22, 2);
+            $pricePerServing = round(floatval($pbProduct['price_per_serving']) * $this->markupMultiplier, 2);
             $metafields[] = [
                 'namespace' => 'powerbody',
                 'key' => 'price_per_serving',
@@ -773,7 +779,7 @@ class ProductSync
         
         // Add product description if available
         if (!empty($pbProduct['description_en'])) {
-            $product['body_html'] = $pbProduct['description_en'];
+            $product['body_html'] = $this->addProductDisclaimer($pbProduct['description_en']);
         }
         
         // Add category as product_type in Shopify
@@ -993,5 +999,25 @@ class ProductSync
         }
         
         $this->logger->info("Added {$collectionsAdded} products to collections");
+    }
+
+    /**
+     * Add legal disclaimer to product description
+     * 
+     * @param string $description Original product description
+     * @return string Description with disclaimer appended
+     */
+    private function addProductDisclaimer(string $description): string
+    {
+        $disclaimer = "<br><br><strong>Food supplement.</strong><br>" .
+                     "Do not exceed the stated recommended daily dose.<br>" .
+                     "Food supplements should not be used as a substitute for a varied and balanced diet and a healthy lifestyle.<br>" .
+                     "Store in a cool, dry place away from direct sunlight and at room temperature.";
+        
+        // Clean the original description from any trailing HTML
+        $cleanDescription = rtrim(trim($description), '<br>');
+        
+        // Add disclaimer to the end of the description
+        return $cleanDescription . $disclaimer;
     }
 } 

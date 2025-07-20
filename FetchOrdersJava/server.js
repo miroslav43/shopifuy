@@ -1,0 +1,320 @@
+// Shopify Orders Fetch App — minimal demo
+// ----------------------------------------------------
+// Quick-start Express server that handles OAuth for a
+// public Shopify app and exposes two endpoints:
+//   GET  /orders                → return last 50 orders
+//   POST /webhooks/orders-create → (optional) webhook
+// ----------------------------------------------------
+
+import { LATEST_API_VERSION, shopifyApi } from '@shopify/shopify-api';
+import '@shopify/shopify-api/adapters/node';
+import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
+
+dotenv.config();
+
+const port = parseInt(process.env.PORT || '3000', 10);
+
+// Bail early if critical env vars are missing
+if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_API_SECRET || !process.env.HOST) {
+    console.error('❌  Missing required env vars (SHOPIFY_API_KEY, SHOPIFY_API_SECRET, HOST)');
+    process.exit(1);
+}
+
+// Create orders_data directory if it doesn't exist
+const ordersDataDir = path.join(process.cwd(), 'orders_data');
+if (!fs.existsSync(ordersDataDir)) {
+    fs.mkdirSync(ordersDataDir, { recursive: true });
+}
+
+/**
+ * Save orders data to a JSON file with timestamp
+ * @param {string} shop - The shop domain
+ * @param {Object} ordersData - The orders data to save
+ * @returns {string} The filename of the saved file
+ */
+function saveOrdersToFile(shop, ordersData) {
+    const filename = `orders.json`;
+    const filepath = path.join(ordersDataDir, filename);
+
+    const dataToSave = {
+        timestamp: new Date().toISOString(),
+        shop: shop,
+        orders: ordersData
+    };
+
+    fs.writeFileSync(filepath, JSON.stringify(dataToSave, null, 2));
+    console.log(`✅ Orders saved to: ${filename}`);
+    return filename;
+}
+
+// ----------------------------------------------------
+// 1.  Initialise Shopify context (v11+)
+// ----------------------------------------------------
+const hostName = process.env.HOST
+    .replace(/^https?:\/\//, '') // strip protocol
+    .replace(/\/$/, '');          // strip trailing slash
+
+const shopify = shopifyApi({
+    apiKey: process.env.SHOPIFY_API_KEY,
+    apiSecretKey: process.env.SHOPIFY_API_SECRET,
+    scopes: (process.env.SCOPES || 'read_orders,read_customers').split(','),
+    hostName,
+    apiVersion: process.env.SHOPIFY_API_VERSION || LATEST_API_VERSION,
+    isEmbeddedApp: false,
+    logger: {
+        level: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+    },
+});
+
+// Very naive in-memory session store — swap with Redis / DB in prod
+const ACTIVE_SHOPIFY_SHOPS = new Map();
+
+// ----------------------------------------------------
+// 2.  Create Express app
+// ----------------------------------------------------
+const app = express();
+
+// Essential middleware for OAuth flow
+app.use(cookieParser());
+app.use(express.json({ type: '/' })); // raw body needed for webhook validation
+app.use(express.urlencoded({ extended: true }));
+
+// Set security headers to help with cookie issues
+app.use((req, res, next) => {
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+    res.setHeader(
+        'Content-Security-Policy',
+        "frame-ancestors 'self' https://*.shopify.com https://admin.shopify.com"
+    );
+    next();
+});
+
+// ----------------------------------------------------
+// 3.  OAuth flow
+// ----------------------------------------------------
+app.get('/auth', async (req, res) => {
+    const { shop } = req.query;
+    if (!shop) return res.status(400).send('Missing shop parameter');
+
+    // Clean up any existing session for this shop
+    ACTIVE_SHOPIFY_SHOPS.delete(shop);
+
+    try {
+        console.log(`🔐 Starting OAuth for shop: ${shop}`);
+
+        await shopify.auth.begin({
+            shop,
+            callbackPath: '/auth/callback',
+            isOnline: false,
+            rawRequest: req,
+            rawResponse: res, // SDK will write headers & redirect
+        });
+    } catch (err) {
+        if (res.headersSent) {
+            console.error('Auth begin error (headers already sent):', err);
+            return;
+        }
+        console.error('❌ Auth begin error:', err);
+        res.status(500).send(err.message);
+    }
+});
+
+app.get('/auth/callback', async (req, res) => {
+    const { shop } = req.query;
+    console.log(`🔄 Processing OAuth callback for shop: ${shop}`);
+
+    try {
+        // headers will be undefined because we pass rawResponse
+        const { session } = await shopify.auth.callback({
+            rawRequest: req,
+            rawResponse: res,
+            isOnline: false,
+        });
+
+        if (!session || !session.accessToken) {
+            console.error('❌ Session created without access token');
+            return res.status(500).send('Authentication failed - no access token received');
+        }
+
+        console.log(`✅ Successfully authenticated shop: ${session.shop}`);
+        ACTIVE_SHOPIFY_SHOPS.set(session.shop, session);
+
+        // Register a webhook (optional)
+        try {
+            await shopify.webhooks.register({
+                session,
+                topic: 'orders/create',
+                deliveryMethod: 'HTTP',
+                endpoint: `${process.env.HOST}/webhooks/orders-create`,
+            });
+            console.log(`✅ Webhook registered for shop: ${session.shop}`);
+        } catch (webhookErr) {
+            console.warn('⚠️  Failed to register webhook:', webhookErr.message);
+        }
+
+        return res.redirect(`/?shop=${session.shop}`);
+    } catch (err) {
+        console.error('❌ Auth callback error:', err);
+
+        if (err.name === 'CookieNotFound' || err.message?.includes('OAuth cookie')) {
+            const retryCount = parseInt(req.query.retry || '0', 10);
+            if (retryCount < 2) {
+                return res.redirect(`/auth?shop=${shop}&retry=${retryCount + 1}`);
+            }
+            return res.status(500).send('Authentication failed after multiple attempts.');
+        }
+
+        return res.status(500).send(err.message);
+    }
+});
+
+// ----------------------------------------------------
+// 4.  Simple auth-guard middleware
+// ----------------------------------------------------
+app.use((req, res, next) => {
+    const { shop } = req.query;
+    if (!shop) return res.status(400).send('Missing shop parameter');
+
+    const session = ACTIVE_SHOPIFY_SHOPS.get(shop);
+    if (!session || !session.accessToken) {
+        return res.redirect(`/auth?shop=${shop}`);
+    }
+
+    if (session.expires && new Date(session.expires) < new Date()) {
+        ACTIVE_SHOPIFY_SHOPS.delete(shop);
+        return res.redirect(`/auth?shop=${shop}`);
+    }
+
+    req.shopifySession = session;
+    next();
+});
+
+// ----------------------------------------------------
+// 5.  API endpoint — fetch last 50 orders and save to JSON
+// ----------------------------------------------------
+app.get('/orders', async (req, res) => {
+    try {
+        const session = req.shopifySession;
+        const client = new shopify.clients.Graphql({ session });
+
+        const query = `{
+            orders(first: 50, reverse: true) {
+                edges {
+                    node {
+                        id
+                        name
+                        createdAt
+                        totalPriceSet { shopMoney { amount currencyCode } }
+                        customer { firstName lastName email phone }
+                        shippingAddress { phone address1 address2 city province country zip }
+                        lineItems(first: 20) { 
+                            edges { 
+                                node { 
+                                    title 
+                                    quantity 
+                                    sku 
+                                    originalUnitPriceSet { 
+                                        shopMoney { 
+                                            amount 
+                                            currencyCode 
+                                        } 
+                                    }
+                                } 
+                            } 
+                        }
+                    }
+                }
+            }
+        }`;
+
+        const data = await client.query({ data: query });
+        const payload = data?.body?.data || data;
+
+        // Save orders to JSON file
+        const filename = saveOrdersToFile(session.shop, payload);
+
+        // Return the data along with save confirmation
+        res.json({
+            message: `Orders successfully fetched and saved to ${filename}`,
+            savedFile: filename,
+            ordersCount: payload?.orders?.edges?.length || 0,
+            data: payload
+        });
+    } catch (err) {
+        console.error('Error fetching orders:', err);
+
+        if (err.message?.includes('access token') || err.message?.includes('unauthorized')) {
+            const { shop } = req.query;
+            ACTIVE_SHOPIFY_SHOPS.delete(shop);
+            return res.redirect(`/auth?shop=${shop}`);
+        }
+
+        res.status(500).json({ error: 'Failed to fetch orders', message: err.message });
+    }
+});
+
+// ----------------------------------------------------
+// 6.  Webhook handler – orders/create
+// ----------------------------------------------------
+app.post('/webhooks/orders-create', async (req, res) => {
+    try {
+        await shopify.webhooks.process({
+            rawBody: req.body,
+            rawRequest: req,
+            rawResponse: res,
+        });
+        res.status(200).send('Webhook handled');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send(err.message);
+    }
+});
+
+// ----------------------------------------------------
+// 7.  Start server
+// ----------------------------------------------------
+app.get('/', (req, res) => {
+    const { shop } = req.query;
+
+    if (!shop) {
+        return res.send(`
+            <h1>Shopify Orders App</h1>
+            <p>To install this app on your Shopify store, visit:</p>
+            <p><code>/auth?shop=YOUR_SHOP.myshopify.com</code></p>
+            <p>Replace YOUR_SHOP with your actual shop name.</p>
+        `);
+    }
+
+    const session = ACTIVE_SHOPIFY_SHOPS.get(shop);
+
+    if (!session) {
+        return res.send(`
+            <h1>Welcome to Shopify Orders App</h1>
+            <p>Please install the app first:</p>
+            <p><a href="/auth?shop=${shop}">Install App for ${shop}</a></p>
+        `);
+    }
+
+    return res.send(`
+        <h1>✅ App Installed Successfully!</h1>
+        <p>Shop: <strong>${session.shop}</strong></p>
+        <p>Access token: <code>${session.accessToken ? 'Present' : 'Missing'}</code></p>
+        <ul>
+            <li><a href="/orders?shop=${shop}">Fetch Orders & Save to JSON</a></li>
+        </ul>
+        <p><small>Session expires: ${session.expires ? new Date(session.expires).toLocaleString() : 'Never'}</small></p>
+        <p><em>Orders will be saved to the orders_data/ directory with timestamps.</em></p>
+    `);
+});
+
+app.listen(port, () => {
+    console.log(`🚀 Shopify Orders App listening on port ${port}`);
+    console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Host: ${process.env.HOST || 'not configured'}`);
+    console.log(`🔑 API Key: ${process.env.SHOPIFY_API_KEY ? 'configured' : 'missing'}`);
+    console.log(`📁 Orders will be saved to: ${ordersDataDir}`);
+});

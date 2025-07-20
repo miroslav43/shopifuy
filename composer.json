@@ -17,10 +17,10 @@
         "ext-sqlite3": "*"
     },
     "scripts": {
-        "sync-products": "php bin/product-sync.php",
+        "sync-complete": "./sync-complete.sh",
+        "sync-quick": "./sync-quick.sh",
+        "sync-products": "./sync-products.sh",
         "sync-orders": "php bin/order-sync.php",
-        "sync-returns": "php bin/return-sync.php",
-        "sync-comments": "php bin/comment-sync.php",
         "sync": "php bin/sync.php"
     }
 }

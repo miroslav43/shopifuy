@@ -1,0 +1,154 @@
+{
+    "timestamp": "2025-07-07T16:15:06+00:00",
+    "order_info": {
+        "shopify_id": 11666543477085,
+        "order_name": "#1013",
+        "total_price": "45.34",
+        "currency": "EUR",
+        "created_at": "2025-07-07T16:03:06Z"
+    },
+    "customer_info": {
+        "name": "Miodrag Vuin",
+        "email": "vuinmio@yahoo.com",
+        "phone": "01636083701"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "phone": "01636083701",
+            "address1": "Lietbargredder 8",
+            "address2": "",
+            "city": "Hamburg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "22115"
+        },
+        "billing": {
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "phone": "01636083701",
+            "address1": "Lietbargredder 8",
+            "address2": "",
+            "city": "Hamburg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "22115"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "01636083701",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Critical Mass - Original, White Choco Bueno - 6000 grams",
+            "sku": "P47883",
+            "quantity": 1,
+            "price": "39.44"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11666543477085,
+        "order_number": 1013,
+        "name": "#1013",
+        "created_at": "2025-07-07T16:03:06Z",
+        "currency": "EUR",
+        "total_price": "45.34",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11666543477085_0",
+                "product_id": null,
+                "name": "Critical Mass - Original, White Choco Bueno - 6000 grams",
+                "quantity": 1,
+                "sku": "P47883",
+                "price": "39.44",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "email": "vuinmio@yahoo.com",
+            "phone": "01636083701"
+        },
+        "shipping_address": {
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "phone": "01636083701",
+            "address1": "Lietbargredder 8",
+            "address2": "",
+            "city": "Hamburg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "22115"
+        },
+        "billing_address": {
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "phone": "01636083701",
+            "address1": "Lietbargredder 8",
+            "address2": "",
+            "city": "Hamburg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "22115"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "01636083701",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1013",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-07T16:03:06Z",
+        "comment": "Order from Shopify #1013",
+        "shipping_price": 0,
+        "address": {
+            "name": "Miodrag",
+            "surname": "Vuin",
+            "address1": "Lietbargredder 8",
+            "address2": "",
+            "address3": "",
+            "postcode": "22115",
+            "city": "Hamburg",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "01636083701",
+            "email": "vuinmio@yahoo.com"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P47883",
+                "name": "Critical Mass - Original, White Choco Bueno - 6000 grams",
+                "qty": 1,
+                "price": "39.44",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

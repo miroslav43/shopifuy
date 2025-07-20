@@ -1,501 +1,368 @@
 # PowerBody-Shopify Synchronization Service
 
-This microservice provides bidirectional synchronization between PowerBody Dropshipping API and Shopify Admin API, with additional product enhancements and customizations.
+This service provides bidirectional synchronization between PowerBody Dropshipping API (v1.5) and Shopify Admin API, enabling seamless dropshipping operations.
+
+## Overview
+
+The service synchronizes:
+- **Products**: Import products from PowerBody API to Shopify with price markup and enhancements
+- **Orders**: Send Shopify orders to PowerBody for fulfillment and sync status updates back
+- **Order Comments**: Bidirectional comment synchronization between platforms
+- **Returns/Refunds**: Sync return processing from PowerBody to Shopify
+
+## PowerBody API Integration
+
+This service integrates with PowerBody's SOAP-based Dropshipping API v1.5, implementing all core methods:
+
+### Order Management
+- `createOrder` - Send new orders to PowerBody for fulfillment
+- `updateOrder` - Update existing orders when modifications are needed
+- `getOrders` - Retrieve order status updates and tracking information
+
+### Product Management
+- `getProductList` - Fetch all available products with pricing and inventory
+- `getProductInfo` - Get detailed product information including descriptions
+
+### Comments & Communication
+- `insertComment` - Send order comments to PowerBody
+- `getComments` - Retrieve comments from PowerBody staff
+
+### Returns & Refunds
+- `getRefundOrders` - Fetch processed returns for creating Shopify refunds
 
 ## Features
 
-### Core Synchronization
-- **Product Sync**: Import products from PowerBody API to Shopify with customizations
-- **Order Sync**: Send Shopify orders to PowerBody and sync order status back to Shopify
-- **Comment Sync**: Synchronize order comments between platforms
-- **Return Sync**: Handle order returns and refunds
-- **Automatic Inventory Updates**: Keep inventory levels synchronized in real-time
-- **Fulfillment Tracking**: Update Shopify fulfillments with tracking information
+### Product Sync
+- **Configurable Price Markup**: Applies customizable markup percentage to all PowerBody prices (configurable via `PRICE_MARKUP_PERCENT` environment variable)
+- **EAN Cleanup**: Removes EAN codes from product titles for cleaner presentation
+- **Rich Metafields**: Adds manufacturer, portion count, price per serving data
+- **Category Collections**: Auto-creates and assigns products to Shopify collections
+- **Inventory Sync**: Keeps stock levels synchronized between platforms
 
-### Product Enhancements
-- **Price Markup**: Automatically applies a 22% markup to all product prices
-- **EAN Cleanup**: Removes "(EAN XXXXX)" patterns from product titles
-- **Metafield Integration**: Adds rich product data through metafields:
-  - `manufacturer`: Source manufacturer of the product
-  - `portion_count`: Number of servings in the product
-  - `price_per_serving`: Price per serving with 22% markup applied
-  - `supplier`: Always set to "Powerbody" for tracking purposes
-- **Automatic Collections**: Creates and adds products to collections based on categories
-
-### Performance Features
-- **Product Caching**: Cache PowerBody product data to reduce API calls and improve performance
-- **Batch Processing**: Process products in batches to respect API rate limits
-- **Robust Error Handling**: Retry mechanisms and detailed logging for API interactions
-- **Detailed Statistics**: Comprehensive statistics tracking and reporting system
+### Order Sync
+- **Complete Order Processing**: Sends all order details including customer info and shipping
+- **Status Updates**: Tracks order progress from PowerBody back to Shopify
+- **Fulfillment Management**: Creates and updates Shopify fulfillments with tracking
+- **Comment Integration**: Syncs order notes and communication bidirectionally
+- **Return Processing**: Handles refunds initiated by PowerBody
 
 ## Requirements
 
 - PHP 7.4 or higher
 - Composer
 - SQLite3 extension
-- SOAP extension
+- SOAP extension  
 - JSON extension
+- Node.js (for FetchOrdersJava component)
 
 ## Installation
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-username/shopify-powerbody-sync.git
-   cd shopify-powerbody-sync
-   ```
-
-2. Install dependencies:
+1. Clone the repository and install dependencies:
    ```bash
    composer install
    ```
 
-3. Create environment file:
+2. Create environment file:
    ```bash
-   cp .env.sample .env
+   cp .env-sample .env
    ```
 
-4. Edit `.env` file and add your credentials:
-   ```
-   # PowerBody SOAP API
+3. Configure your credentials in `.env`:
+   ```env
+   # PowerBody SOAP API (v1.5)
    POWERBODY_API_WSDL="http://www.powerbody.co.uk/api/soap/?wsdl"
    POWERBODY_USER="your-username"
    POWERBODY_PASS="your-password"
 
    # Shopify Admin REST API
    SHOPIFY_STORE="your-store.myshopify.com"
-   SHOPIFY_API_KEY="your-api-key"
-   SHOPIFY_API_SECRET="your-api-secret"
    SHOPIFY_ACCESS_TOKEN="your-access-token"
    SHOPIFY_LOCATION_ID="your-location-id"
 
-   # Sync cadence
-   PRODUCT_SYNC_CRON="0 2 * * *"   # daily at 02:00, products
-   ORDER_SYNC_CRON="0 * * * *"     # hourly, orders + returns + comments
-   LOG_LEVEL="INFO"                # DEBUG / INFO / WARNING / ERROR
-   ```
+   # Product Settings
+   PRICE_MARKUP_PERCENT="22"        # Markup percentage to apply to PowerBody prices
+   DEFAULT_VENDOR="Powerbody"
+   DEFAULT_PRODUCT_TYPE="Supplement"
 
-5. Make the shell scripts executable (Linux/Mac only):
-   ```bash
-   chmod +x *.sh
+   # Sync Settings
+   LOG_LEVEL="INFO"
+   SYNC_INTERVAL="3600"             # Sync interval in seconds
    ```
 
 ## Usage
 
-### Run Sync Scripts
-
-#### Using Shell Scripts (Linux/Mac)
+### Workflow Scripts
 
 ```bash
-# Run full product sync
+# Complete automated workflow: Start JS server + fetch + sync + cleanup
+./sync-complete.sh
+
+# Quick sync: Assumes JS server already running, just fetch + sync
+./sync-quick.sh
+
+# Product sync: Complete PowerBody to Shopify product synchronization
 ./sync-products.sh
 
-# Run orders, comments, and returns sync
-./sync-orders-comments-refunds.sh
-
-# Generate comprehensive statistics report
-./sync-report.sh
+# JavaScript-only fetch: Fetch orders to JSON (no PHP processing)
+./fetch-orders.sh
 ```
 
-Shell script options:
-```bash
-# Generate custom report with options
-./sync-report.sh -d 30 -t order -o report.txt
-```
-
-#### Using PHP Scripts (All platforms)
+### Main Sync Commands
 
 ```bash
-# Run all sync operations
+# Run all sync operations (products + orders)
 php bin/sync.php
 
-# Run with specific options
-php bin/sync.php all      # Runs all sync jobs
-php bin/sync.php products # Only sync products
-php bin/sync.php orders   # Only sync orders
-php bin/sync.php comments # Only sync comments
-php bin/sync.php returns  # Only sync returns
+# Run only product sync
+php bin/sync.php products
+
+# Run only order sync (includes comments and returns)
+php bin/sync.php orders
+
+# Using shell script (direct API, no JavaScript)
+./sync.sh
 ```
 
-### Individual Sync Tasks
+### Script Options Comparison
+
+| Script | Focus | JavaScript Server | API Tests | Use Case |
+|--------|-------|------------------|-----------|----------|
+| `sync-complete.sh` | Orders | Starts/stops automatically | ✗ | Fully automated order workflow |
+| `sync-quick.sh` | Orders | Assumes already running | ✗ | Quick order sync with persistent server |
+| `sync-products.sh` | Products | N/A | ✓ | Complete product synchronization |
+| `fetch-orders.sh` | Orders | Assumes already running | ✗ | JavaScript fetch only |
+
+### Complete Workflow Script
+
+The `sync-complete.sh` script provides the full automated workflow:
+
+```bash
+# Run complete workflow with default settings
+./sync-complete.sh
+
+# Use custom port for JavaScript server
+./sync-complete.sh -p 8080
+
+# Extend server startup timeout
+./sync-complete.sh -t 60
+
+# Show help
+./sync-complete.sh --help
+```
+
+**What the complete script does:**
+1. **Prerequisites Check**: Verifies Node.js, PHP, and configuration
+2. **JavaScript Server**: Starts OAuth server (if not already running)
+3. **Order Fetch**: Fetches orders via JavaScript and saves to JSON
+4. **PHP Processing**: Processes orders through PHP sync to PowerBody
+5. **Cleanup**: Stops JavaScript server and cleans up resources
+
+### Quick Sync Script
+
+The `sync-quick.sh` script is perfect when you have a persistent JavaScript server:
+
+```bash
+# Run quick sync with default settings
+./sync-quick.sh
+
+# Use custom port for JavaScript server
+./sync-quick.sh -p 8080
+
+# Show help
+./sync-quick.sh --help
+```
+
+**What the quick script does:**
+1. **Prerequisites Check**: Verifies PHP and configuration
+2. **Server Check**: Ensures JavaScript server is running
+3. **Order Fetch**: Fetches orders via JavaScript and saves to JSON
+4. **PHP Processing**: Processes orders through PHP sync to PowerBody
+
+**Benefits:**
+- **No Server Management**: Assumes server is already running
+- **Faster Execution**: Skips server startup/shutdown overhead
+- **Persistent Sessions**: Maintains OAuth sessions across multiple runs
+- **Development Friendly**: Perfect for iterative development
+
+### Product Sync Script
+
+The `sync-products.sh` script handles complete PowerBody to Shopify product synchronization:
+
+```bash
+# Run full product sync with API tests
+./sync-products.sh
+
+# Skip API connection tests for faster execution
+./sync-products.sh --skip-tests
+
+# Show product statistics only
+./sync-products.sh --stats-only
+
+# Show help
+./sync-products.sh --help
+```
+
+**What the product sync script does:**
+1. **Prerequisites Check**: Verifies PHP, extensions, and dependencies
+2. **Configuration Validation**: Ensures PowerBody and Shopify credentials are configured
+3. **API Connection Tests**: Validates both PowerBody SOAP and Shopify REST APIs
+4. **Product Synchronization**: Fetches products from PowerBody and creates/updates in Shopify
+5. **Statistics Display**: Shows sync results and recent activity
+
+**Product Sync Features:**
+- **Price Markup**: Automatically applies configured markup to PowerBody prices
+- **EAN Cleanup**: Removes EAN codes from product titles for cleaner presentation
+- **Rich Metafields**: Adds manufacturer, portion count, and price per serving data
+- **Auto Collections**: Creates and assigns products to category-based collections
+- **Inventory Sync**: Synchronizes stock levels between PowerBody and Shopify
+- **Error Handling**: Robust error checking with detailed logging
+
+**Price Markup Configuration:**
+The system applies a configurable markup to all PowerBody prices using the `PRICE_MARKUP_PERCENT` environment variable:
+
+```bash
+# Examples of different markup configurations:
+PRICE_MARKUP_PERCENT="22"    # 22% markup (default) - €10.00 → €12.20
+PRICE_MARKUP_PERCENT="35"    # 35% markup for higher margins - €10.00 → €13.50
+PRICE_MARKUP_PERCENT="15"    # 15% markup for competitive pricing - €10.00 → €11.50
+PRICE_MARKUP_PERCENT="0"     # No markup for cost price testing - €10.00 → €10.00
+```
+
+The markup is applied to both the main product price and the price-per-serving metafield, ensuring consistency across all pricing data.
+
+**Benefits:**
+- **Complete Workflow**: Handles entire product sync process
+- **API Validation**: Pre-flight checks ensure connectivity before sync
+- **Detailed Logging**: Comprehensive logging to `logs/sync-products.log`
+- **Statistics**: Real-time sync statistics and recent activity tracking
+- **Flexible Options**: Skip tests for speed or view stats without syncing
+
+### Individual Components
 
 ```bash
 # Product sync only
 php bin/product-sync.php
 
-# Order sync only
+# Order sync only (includes comments and returns)
 php bin/order-sync.php
 
-# Comment sync only
-php bin/comment-sync.php
-
-# Return/Refund sync only
-php bin/return-sync.php
+# Fetch orders via JavaScript only (no PHP processing)
+./fetch-orders.sh
 ```
 
-### Statistics and Reporting
+### JavaScript Order Fetcher
 
-The system includes a comprehensive statistics tracking and reporting system that records detailed information about each sync operation.
+The FetchOrdersJava component provides OAuth-based order fetching capabilities:
 
 ```bash
-# View general statistics for the last 7 days
-php bin/sync-stats.php
-
-# View statistics for a specific sync type
-php bin/sync-stats.php -t product  # product, order, comment, refund, or all
-php bin/sync-stats.php -t order -d 14  # Last 14 days of order sync stats
-
-# View detailed logs for a specific sync run
-php bin/sync-stats.php -r 123  # Where 123 is the run ID
-
-# Generate a comprehensive report with custom date range
-./sync-report.sh -d 30 -t all
-
-# Save report to a file
-./sync-report.sh -d 30 -t order -o order_report.txt
+cd FetchOrdersJava
+npm install
+node server.js
 ```
 
-The statistics system tracks:
-- Number of sync runs per type
-- Success and failure rates
-- Items processed, succeeded, and failed
-- Detailed logs for each item processed
-- Daily summaries for quick analysis
+This component handles OAuth authentication and provides endpoints for fetching order data that can be processed by the PHP sync components.
 
-### Export Tools
+#### Integration with PHP OrderSync
 
-```bash
-# Export all Shopify products to JSON
-php bin/export-products.php
+The OrderSync component intelligently integrates with the JavaScript order fetcher:
 
-# With options
-php bin/export-products.php --output=custom_filename.json --pretty
+1. **Primary Source**: OrderSync first checks for `FetchOrdersJava/orders_data/orders.json`
+2. **Data Conversion**: Converts GraphQL order format (from JS) to REST API format for compatibility
+3. **Fallback**: If no JavaScript JSON file exists, falls back to direct Shopify API calls
 
-# Get help with options
-php bin/export-products.php --help
+**Order Processing Flow:**
+```
+JavaScript OAuth → orders.json → PHP OrderSync → PowerBody SOAP API
+                ↓ (fallback)
+              Direct Shopify API → PHP OrderSync → PowerBody SOAP API
 ```
 
-### Product Management Tools
+**Benefits of JavaScript Integration:**
+- Better OAuth token management
+- More complete order data via GraphQL
+- Reduced API rate limits on main sync process
+- Separation of concerns (auth vs processing)
 
-```bash
-# CAUTION: Delete all Shopify products (with safety confirmations)
-php bin/delete-products.php
+## Architecture
 
-# Delete products from a specific vendor only
-php bin/delete-products.php --vendor="Powerbody"
+### Core Components
 
-# Delete without confirmation (DANGEROUS)
-php bin/delete-products.php --force
+- **ProductSync**: Handles product synchronization from PowerBody to Shopify
+- **OrderSync**: Manages complete order lifecycle including comments and returns
+- **PowerBodyLink**: SOAP API client for PowerBody integration
+- **ShopifyLink**: REST/GraphQL API client for Shopify integration
+- **Database**: SQLite-based tracking for sync states and mappings
 
-# For CI/CD automation (requires exact confirmation text)
-php bin/delete-products.php --yes="DELETE ALL PRODUCTS"
+### Sync Process
 
-# Show help with all options
-php bin/delete-products.php --help
-```
+1. **Product Sync**: Fetches products from PowerBody, applies markup and enhancements, creates/updates in Shopify
+2. **Order Sync**: 
+   - Retrieves unfulfilled Shopify orders
+   - Sends new orders to PowerBody via SOAP API
+   - Checks PowerBody for order status updates
+   - Syncs comments bidirectionally
+   - Processes returns and creates Shopify refunds
 
-### Advanced Options
-
-#### Debug Mode
-Enable debug mode to get more verbose logging and save detailed product data for troubleshooting:
-
-```bash
-# Enable debug mode using the sync-products.php script
-php bin/sync-products.php --debug
-
-# You can also use the help option to see all available commands
-php bin/sync-products.php --help
-
-# Debug mode can also be enabled in your own scripts:
-$productSync = new ProductSync(true); // true enables debug mode
-$productSync->sync();
-```
-
-Debug mode outputs additional information to logs and saves detailed product data in the `storage/debug/` directory, allowing you to inspect the raw data received from PowerBody's API.
-
-#### Skip Draft Products
-By default, products with zero inventory are created as draft products in Shopify. You can skip these products entirely with the `--skip-draft` flag:
-
-```bash
-# Skip products with zero inventory
-php bin/product-sync.php --skip-draft
-
-# Combine with debug mode
-php bin/product-sync.php --debug --skip-draft
-```
-
-This is useful to:
-- Reduce the number of products in your Shopify store
-- Only import products that are available for purchase
-- Improve store performance by having fewer products
-
-#### Batch Processing
-For large catalogs, you can process products in batches by specifying a starting batch index. To do this, you'll need to modify the sync script or create a custom one:
-
-```php
-<?php
-// custom-sync.php
-require_once __DIR__ . '/vendor/autoload.php';
-
-use App\Sync\ProductSync;
-
-// Create product sync instance, optionally with debug mode
-$productSync = new ProductSync(true); // true for debug mode, false for normal mode
-
-// Start from a specific batch (each batch contains 50 products by default)
-$startBatchIndex = 5; // Start from the 6th batch (0-indexed)
-$productSync->sync($startBatchIndex);
-
-echo "Product sync completed from batch {$startBatchIndex}\n";
-```
-
-This is useful for:
-- Resuming interrupted syncs
-- Troubleshooting specific product batches
-- Reducing server load by spreading the sync process over time
-- Processing only a subset of products during testing
-
-#### Examining Cached Product Data
-
-For debugging purposes, you can examine the cached product data directly:
-
-```bash
-# List all cached products
-php bin/cache-manager.php list
-
-# View detailed cache status
-php bin/cache-manager.php status
-
-# View a specific product's cached data
-cat storage/cache/products/product_12345.json | json_pp
-```
-
-The cached data shows exactly what information is being used for product synchronization and can be helpful for troubleshooting price, inventory, or data mapping issues.
-
-### Cron Jobs
-
-Set up cron jobs to run the sync automatically:
+### Data Flow
 
 ```
-# Products - Once per day (2am)
-0 2 * * * /path/to/shopify-powerbody-sync/sync-products.sh >> /path/to/shopify-powerbody-sync/logs/cron.log 2>&1
-
-# Orders, Comments, Returns - Every hour
-0 * * * * /path/to/shopify-powerbody-sync/sync-orders-comments-refunds.sh >> /path/to/shopify-powerbody-sync/logs/cron.log 2>&1
-
-# Generate daily report at 6am
-0 6 * * * /path/to/shopify-powerbody-sync/sync-report.sh -d 1 -o /path/to/shopify-powerbody-sync/logs/daily_report_$(date +\%Y\%m\%d).txt
-
-# Alternative using PHP scripts directly:
-0 2 * * * /usr/bin/php /path/to/shopify-powerbody-sync/bin/product-sync.php >> /path/to/shopify-powerbody-sync/logs/cron.log 2>&1
-0 * * * * /usr/bin/php /path/to/shopify-powerbody-sync/bin/order-sync.php >> /path/to/shopify-powerbody-sync/logs/cron.log 2>&1
-0 * * * * /usr/bin/php /path/to/shopify-powerbody-sync/bin/comment-sync.php >> /path/to/shopify-powerbody-sync/logs/cron.log 2>&1
-0 * * * * /usr/bin/php /path/to/shopify-powerbody-sync/bin/return-sync.php >> /path/to/shopify-powerbody-sync/logs/cron.log 2>&1
+PowerBody SOAP API ←→ OrderSync ←→ Shopify REST/GraphQL API
+PowerBody SOAP API ←→ ProductSync ←→ Shopify REST API
 ```
 
-## Product Customization
+## PowerBody API Payment Process
 
-The synchronization includes several product customizations:
+Orders sent to PowerBody require payment before fulfillment:
 
-### Price Markup
-All product prices from PowerBody are automatically increased by 22% before being imported to Shopify.
+1. Orders are created with "on hold" status in PowerBody
+2. Login to your PowerBody account to review and pay for orders
+3. Payment is processed via Sage Pay
+4. Orders move to fulfillment once payment is confirmed
+5. Daily invoicing and settlement available
 
-### Title Cleanup
-The system automatically removes "(EAN XXXXX)" patterns from product titles for cleaner display in your store.
+## Error Handling
 
-### Metafields
-The following metafields are added to products:
+- **Dead Letter Queue**: Failed orders are saved for manual review and retry
+- **Comprehensive Logging**: All operations logged with configurable levels
+- **Graceful Degradation**: Sync continues even if individual items fail
+- **Retry Mechanisms**: Built-in retry for transient API failures
 
-1. **manufacturer**: The original manufacturer of the product
-2. **portion_count**: Number of servings in the product
-3. **price_per_serving**: The price per serving with the 22% markup applied
-4. **supplier**: Always set to "Powerbody" for easy identification in Shopify
+## File Structure
 
-### Displaying Metafields in Shopify
-
-To display metafields on your store:
-
-1. Go to Shopify admin > Settings > Custom data
-2. Make the metafields visible in the product editor
-3. Update your theme to display these values on the product page:
-
-Example code for your theme's product template:
-```liquid
-{% if product.metafields.powerbody.portion_count %}
-  <div class="product-servings">
-    <span class="label">Servings:</span>
-    <span class="value">{{ product.metafields.powerbody.portion_count }}</span>
-  </div>
-{% endif %}
-
-{% if product.metafields.powerbody.price_per_serving %}
-  <div class="price-per-serving">
-    <span class="label">Price per serving:</span>
-    <span class="value">{{ product.metafields.powerbody.price_per_serving | money }}</span>
-  </div>
-{% endif %}
+```
+shopifuy/
+├── src/
+│   ├── Sync/
+│   │   ├── ProductSync.php    # Product synchronization
+│   │   └── OrderSync.php      # Order, comment, return sync
+│   ├── Core/
+│   │   ├── PowerBodyLink.php  # PowerBody SOAP API client
+│   │   ├── ShopifyLink.php    # Shopify REST/GraphQL client
+│   │   └── Database.php       # SQLite data layer
+│   ├── Config/
+│   │   └── EnvLoader.php      # Environment configuration
+│   └── Logger/
+├── bin/
+│   ├── sync.php              # Main sync script
+│   ├── product-sync.php      # Product sync only
+│   └── order-sync.php        # Order sync only
+├── FetchOrdersJava/          # Node.js OAuth order fetcher
+├── storage/
+│   └── cache/               # Order and product caching
+├── sync-complete.sh          # Full automated workflow
+├── sync-quick.sh            # Quick sync (assumes JS server running)
+├── sync-products.sh          # Complete product synchronization
+├── fetch-orders.sh          # JavaScript fetch only
+└── vendor/                  # Composer dependencies
 ```
 
-## Data Storage
+## Monitoring
 
-- SQLite database is used to store mapping information between Shopify and PowerBody entities
-- Database is created automatically on first run
-- Located at `storage/sync.db`
-- Statistics data is stored in a separate `storage/sync_stats.db` database
+- **Logs**: Stored in `logs/` directory with rotation
+- **Sync States**: Tracked in SQLite database for resumable operations
+- **Dead Letters**: Failed operations saved in `storage/` for review
 
-## Statistics and Analytics
+## Support
 
-The system includes a comprehensive statistics tracking and reporting system with the following features:
-
-### Statistics Database
-
-The statistics system maintains several tables in the `storage/sync_stats.db` SQLite database:
-
-1. **sync_run**: Records each sync operation with details on timing, status, and item counts
-2. **sync_detail**: Tracks detailed information for each item processed
-3. **sync_daily_summary**: Aggregates daily statistics for quick reporting
-
-### Reporting Tools
-
-Several tools are available for viewing and analyzing statistics:
-
-1. **sync-stats.php**: Command-line tool for viewing statistics
-   ```bash
-   # View all stats for the last 7 days
-   php bin/sync-stats.php
-   
-   # View stats for a specific type with custom date range
-   php bin/sync-stats.php -t product -d 14
-   
-   # View detailed logs for a specific sync run
-   php bin/sync-stats.php -r 123
-   ```
-
-2. **sync-report.sh**: Shell script for generating comprehensive reports
-   ```bash
-   # Generate a report for all sync types in the last 7 days
-   ./sync-report.sh
-   
-   # Generate a report for specific type and date range
-   ./sync-report.sh -t order -d 30
-   
-   # Save report to a file
-   ./sync-report.sh -o monthly_report.txt -d 30
-   ```
-
-### Statistics Data Available
-
-The statistics system tracks:
-
-1. **Sync Runs**: Basic information about each sync operation
-   - Date and time started/completed
-   - Sync type (product, order, comment, refund)
-   - Status (success, failure, running)
-   - Item counts (processed, succeeded, failed)
-
-2. **Item Details**: Detailed information for each item processed
-   - Item ID and type
-   - Operation performed (create, update, delete)
-   - Status (success, failure)
-   - Timestamp
-   - Error messages or additional details
-
-3. **Daily Summaries**: Aggregated daily statistics
-   - Counts by sync type
-   - Success and failure rates
-   - Total items processed
-
-### Integrating Statistics in Custom Scripts
-
-You can integrate the statistics tracking in your own custom scripts:
-
-```php
-<?php
-use App\Logger\SyncStats;
-
-// Get the singleton instance
-$stats = SyncStats::getInstance();
-
-// Start tracking a sync run
-$runId = $stats->startSync('custom');
-
-// Log individual items
-$stats->logItem($runId, 'item-123', 'product', 'create', 'success', 'Product created successfully');
-$stats->logItem($runId, 'item-456', 'product', 'update', 'failure', 'API error: Rate limit exceeded');
-
-// End the sync run
-$stats->endSync($runId, 'success'); // or 'failure'
-```
-
-## Product Caching System
-
-The application implements a caching system for PowerBody product data to reduce API calls and improve performance. This helps address API rate limits and speeds up synchronization tasks.
-
-### How Caching Works
-
-- Product information is cached in JSON files in the `storage/cache/products` directory
-- Cache has an expiration time of one week
-- When requesting product information, the system first checks the cache
-- If cache is valid, it returns cached data immediately
-- If cache is expired or missing, it fetches fresh data from the API and updates the cache
-- Background processes preload additional product details to warm up the cache for future use
-
-### Cache Management Tool
-
-A cache management tool is included to view and manage the product cache:
-
-```bash
-# Show cache help
-php bin/cache-manager.php help
-
-# List all cached products
-php bin/cache-manager.php list
-
-# Show cache status summary
-php bin/cache-manager.php status
-
-# Clear all product caches
-php bin/cache-manager.php clear
-
-# Clear specific product cache
-php bin/cache-manager.php clear 12345
-
-# Refresh cache for specific product
-php bin/cache-manager.php refresh 12345
-```
-
-## PowerBody API Integration
-
-This application integrates with all PowerBody Dropshipping API v1.5 methods:
-
-- **getProductList** - Fetch all products
-- **getProductInfo** - Get detailed product information
-- **getOrders** - Fetch order status updates
-- **createOrder** - Send new orders to PowerBody
-- **updateOrder** - Update existing orders
-- **getRefundOrders** - Handle returns and refunds
-- **insertComment** - Send comments to orders
-- **getComments** - Fetch comments from orders
-- **getShippingMethods** - Get available shipping methods
-
-## Logging
-
-- Logs are stored in `logs/` directory
-- Log level can be configured in `.env` file
-- Statistics data is stored in the `storage/sync_stats.db` database
-- Detailed run statistics can be viewed using the `sync-stats.php` tool
-
-## Troubleshooting
-
-If you encounter any issues with the synchronization:
-
-1. Check the log files in the `logs/` directory
-2. Use `php bin/sync-stats.php` to view recent sync operations and their status
-3. View detailed logs for specific sync runs with `php bin/sync-stats.php -r RUN_ID`
-4. Failed operations are stored as JSON files in the `storage/` directory with `dead_letter_` prefix
-5. Ensure your API credentials are correct
-6. Verify that your Shopify API access token has the required permissions
-7. Check cache status with `php bin/cache-manager.php status` for product sync issues
-
-## License
-
-This project is licensed under the MIT License.
+For PowerBody API documentation and credentials, contact PowerBody IT department.
+For Shopify API setup, refer to Shopify Partner documentation.

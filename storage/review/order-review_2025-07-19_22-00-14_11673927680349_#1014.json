@@ -1,0 +1,154 @@
+{
+    "timestamp": "2025-07-19T22:00:14+00:00",
+    "order_info": {
+        "shopify_id": 11673927680349,
+        "order_name": "#1014",
+        "total_price": "49.8",
+        "currency": "EUR",
+        "created_at": "2025-07-10T17:03:21Z"
+    },
+    "customer_info": {
+        "name": "Mariana Kokhan",
+        "email": "",
+        "phone": "+4916094489275"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Mariana",
+            "last_name": "Kokhan",
+            "phone": "+4916094489275",
+            "address1": "Celsiusstraße 68",
+            "address2": "",
+            "city": "Berlin",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "12207"
+        },
+        "billing": {
+            "first_name": "Mariana",
+            "last_name": "Kokhan",
+            "phone": "+4916094489275",
+            "address1": "Celsiusstraße 68",
+            "address2": "",
+            "city": "Berlin",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "12207"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "+4916094489275",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Mutant Whey, Cookies & Cream - 2270 grams",
+            "sku": "P30024",
+            "quantity": 1,
+            "price": "49.8"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11673927680349,
+        "order_number": 1014,
+        "name": "#1014",
+        "created_at": "2025-07-10T17:03:21Z",
+        "currency": "EUR",
+        "total_price": "49.8",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11673927680349_0",
+                "product_id": null,
+                "name": "Mutant Whey, Cookies & Cream - 2270 grams",
+                "quantity": 1,
+                "sku": "P30024",
+                "price": "49.8",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Mariana",
+            "last_name": "Kokhan",
+            "email": "",
+            "phone": "+4916094489275"
+        },
+        "shipping_address": {
+            "first_name": "Mariana",
+            "last_name": "Kokhan",
+            "phone": "+4916094489275",
+            "address1": "Celsiusstraße 68",
+            "address2": "",
+            "city": "Berlin",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "12207"
+        },
+        "billing_address": {
+            "first_name": "Mariana",
+            "last_name": "Kokhan",
+            "phone": "+4916094489275",
+            "address1": "Celsiusstraße 68",
+            "address2": "",
+            "city": "Berlin",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "12207"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "+4916094489275",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1014",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-10T17:03:21Z",
+        "comment": "Order from Shopify #1014",
+        "shipping_price": 0,
+        "address": {
+            "name": "Mariana",
+            "surname": "Kokhan",
+            "address1": "Celsiusstraße 68",
+            "address2": "",
+            "address3": "",
+            "postcode": "12207",
+            "city": "Berlin",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "+4916094489275",
+            "email": ""
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P30024",
+                "name": "Mutant Whey, Cookies & Cream - 2270 grams",
+                "qty": 1,
+                "price": "49.8",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

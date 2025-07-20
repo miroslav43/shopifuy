@@ -1,0 +1,154 @@
+{
+    "timestamp": "2025-07-20T08:45:07+00:00",
+    "order_info": {
+        "shopify_id": 11690441277789,
+        "order_name": "#1025",
+        "total_price": "44.84",
+        "currency": "EUR",
+        "created_at": "2025-07-20T08:36:23Z"
+    },
+    "customer_info": {
+        "name": "Salem Hemeed",
+        "email": "copiers@hotmail.de",
+        "phone": "+491721552935"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Salem",
+            "last_name": "Hemeed",
+            "phone": "+491721552935",
+            "address1": "Kuehnstraße 102",
+            "address2": "",
+            "city": "Hamburg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "22045"
+        },
+        "billing": {
+            "first_name": "Salem",
+            "last_name": "Hemeed",
+            "phone": "+491721552935",
+            "address1": "Kuehnstraße 102",
+            "address2": "",
+            "city": "Hamburg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "22045"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "+491721552935",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Omega-3 Gold - Brain Edition - 120 softgels",
+            "sku": "P42357",
+            "quantity": 2,
+            "price": "19.47"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11690441277789,
+        "order_number": 1025,
+        "name": "#1025",
+        "created_at": "2025-07-20T08:36:23Z",
+        "currency": "EUR",
+        "total_price": "44.84",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11690441277789_0",
+                "product_id": null,
+                "name": "Omega-3 Gold - Brain Edition - 120 softgels",
+                "quantity": 2,
+                "sku": "P42357",
+                "price": "19.47",
+                "fulfillable_quantity": 2,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Salem",
+            "last_name": "Hemeed",
+            "email": "copiers@hotmail.de",
+            "phone": "+491721552935"
+        },
+        "shipping_address": {
+            "first_name": "Salem",
+            "last_name": "Hemeed",
+            "phone": "+491721552935",
+            "address1": "Kuehnstraße 102",
+            "address2": "",
+            "city": "Hamburg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "22045"
+        },
+        "billing_address": {
+            "first_name": "Salem",
+            "last_name": "Hemeed",
+            "phone": "+491721552935",
+            "address1": "Kuehnstraße 102",
+            "address2": "",
+            "city": "Hamburg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "22045"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "+491721552935",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1025",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-20T08:36:23Z",
+        "comment": "Order from Shopify #1025",
+        "shipping_price": 0,
+        "address": {
+            "name": "Salem",
+            "surname": "Hemeed",
+            "address1": "Kuehnstraße 102",
+            "address2": "",
+            "address3": "",
+            "postcode": "22045",
+            "city": "Hamburg",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "+491721552935",
+            "email": "copiers@hotmail.de"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P42357",
+                "name": "Omega-3 Gold - Brain Edition - 120 softgels",
+                "qty": 2,
+                "price": "19.47",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

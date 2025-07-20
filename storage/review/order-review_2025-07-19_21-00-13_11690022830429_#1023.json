@@ -1,0 +1,254 @@
+{
+    "timestamp": "2025-07-19T21:00:13+00:00",
+    "order_info": {
+        "shopify_id": 11690022830429,
+        "order_name": "#1023",
+        "total_price": "47.39",
+        "currency": "EUR",
+        "created_at": "2025-07-19T19:21:38Z"
+    },
+    "customer_info": {
+        "name": "Karolin Bahr",
+        "email": "kd_catwoman2@yahoo.de",
+        "phone": "01796909050"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Karolin",
+            "last_name": "Bahr",
+            "phone": "01796909050",
+            "address1": "Mailänderstraße 14",
+            "address2": "App. 64",
+            "city": "Frankfurt am Main",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "60598"
+        },
+        "billing": {
+            "first_name": "Karolin",
+            "last_name": "Bahr",
+            "phone": "01796909050",
+            "address1": "Mailänderstraße 14",
+            "address2": "App. 64",
+            "city": "Frankfurt am Main",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "60598"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "01796909050",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Frulove In Jelly, Raspberry & Pomegranate - 1000 grams",
+            "sku": "P50971",
+            "quantity": 1,
+            "price": "9.09"
+        },
+        {
+            "name": "Frulove In Jelly, Blueberry - 500 grams",
+            "sku": "P47521",
+            "quantity": 1,
+            "price": "6.9"
+        },
+        {
+            "name": "Frulove In Jelly, Strawberry - 1000 grams",
+            "sku": "P44858",
+            "quantity": 1,
+            "price": "11.71"
+        },
+        {
+            "name": "Sweet Sauce, Sweet Coffee - 500 ml.",
+            "sku": "P47112",
+            "quantity": 1,
+            "price": "4.7"
+        },
+        {
+            "name": "Frulove In Jelly, Cherry - 1000 grams",
+            "sku": "P44856",
+            "quantity": 1,
+            "price": "9.09"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11690022830429,
+        "order_number": 1023,
+        "name": "#1023",
+        "created_at": "2025-07-19T19:21:38Z",
+        "currency": "EUR",
+        "total_price": "47.39",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11690022830429_0",
+                "product_id": null,
+                "name": "Frulove In Jelly, Raspberry & Pomegranate - 1000 grams",
+                "quantity": 1,
+                "sku": "P50971",
+                "price": "9.09",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11690022830429_1",
+                "product_id": null,
+                "name": "Frulove In Jelly, Blueberry - 500 grams",
+                "quantity": 1,
+                "sku": "P47521",
+                "price": "6.9",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11690022830429_2",
+                "product_id": null,
+                "name": "Frulove In Jelly, Strawberry - 1000 grams",
+                "quantity": 1,
+                "sku": "P44858",
+                "price": "11.71",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11690022830429_3",
+                "product_id": null,
+                "name": "Sweet Sauce, Sweet Coffee - 500 ml.",
+                "quantity": 1,
+                "sku": "P47112",
+                "price": "4.7",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11690022830429_4",
+                "product_id": null,
+                "name": "Frulove In Jelly, Cherry - 1000 grams",
+                "quantity": 1,
+                "sku": "P44856",
+                "price": "9.09",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Karolin",
+            "last_name": "Bahr",
+            "email": "kd_catwoman2@yahoo.de",
+            "phone": "01796909050"
+        },
+        "shipping_address": {
+            "first_name": "Karolin",
+            "last_name": "Bahr",
+            "phone": "01796909050",
+            "address1": "Mailänderstraße 14",
+            "address2": "App. 64",
+            "city": "Frankfurt am Main",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "60598"
+        },
+        "billing_address": {
+            "first_name": "Karolin",
+            "last_name": "Bahr",
+            "phone": "01796909050",
+            "address1": "Mailänderstraße 14",
+            "address2": "App. 64",
+            "city": "Frankfurt am Main",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "60598"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "01796909050",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1023",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-19T19:21:38Z",
+        "comment": "Order from Shopify #1023",
+        "shipping_price": 0,
+        "address": {
+            "name": "Karolin",
+            "surname": "Bahr",
+            "address1": "Mailänderstraße 14",
+            "address2": "App. 64",
+            "address3": "",
+            "postcode": "60598",
+            "city": "Frankfurt am Main",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "01796909050",
+            "email": "kd_catwoman2@yahoo.de"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P50971",
+                "name": "Frulove In Jelly, Raspberry & Pomegranate - 1000 grams",
+                "qty": 1,
+                "price": "9.09",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P47521",
+                "name": "Frulove In Jelly, Blueberry - 500 grams",
+                "qty": 1,
+                "price": "6.9",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P44858",
+                "name": "Frulove In Jelly, Strawberry - 1000 grams",
+                "qty": 1,
+                "price": "11.71",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P47112",
+                "name": "Sweet Sauce, Sweet Coffee - 500 ml.",
+                "qty": 1,
+                "price": "4.7",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P44856",
+                "name": "Frulove In Jelly, Cherry - 1000 grams",
+                "qty": 1,
+                "price": "9.09",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

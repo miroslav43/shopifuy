@@ -1,0 +1,154 @@
+{
+    "timestamp": "2025-07-18T13:45:08+00:00",
+    "order_info": {
+        "shopify_id": 11688094531933,
+        "order_name": "#1017",
+        "total_price": "85.82",
+        "currency": "EUR",
+        "created_at": "2025-07-18T13:40:36Z"
+    },
+    "customer_info": {
+        "name": "Marian Maslowiec",
+        "email": "maslowiecmarian7@gmail.com",
+        "phone": "4917620970459"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Marian",
+            "last_name": "Maslowiec",
+            "phone": "4917620970459",
+            "address1": "Unnaer Str. 5",
+            "address2": "",
+            "city": "Werl",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "59457"
+        },
+        "billing": {
+            "first_name": "Marian",
+            "last_name": "Maslowiec",
+            "phone": "4917620970459",
+            "address1": "Unnaer Str. 5",
+            "address2": "",
+            "city": "Werl",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "59457"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "4917620970459",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Bigger By The Day - Legendary Series - 120 caps",
+            "sku": "P45735",
+            "quantity": 2,
+            "price": "39.96"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11688094531933,
+        "order_number": 1017,
+        "name": "#1017",
+        "created_at": "2025-07-18T13:40:36Z",
+        "currency": "EUR",
+        "total_price": "85.82",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11688094531933_0",
+                "product_id": null,
+                "name": "Bigger By The Day - Legendary Series - 120 caps",
+                "quantity": 2,
+                "sku": "P45735",
+                "price": "39.96",
+                "fulfillable_quantity": 2,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Marian",
+            "last_name": "Maslowiec",
+            "email": "maslowiecmarian7@gmail.com",
+            "phone": "4917620970459"
+        },
+        "shipping_address": {
+            "first_name": "Marian",
+            "last_name": "Maslowiec",
+            "phone": "4917620970459",
+            "address1": "Unnaer Str. 5",
+            "address2": "",
+            "city": "Werl",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "59457"
+        },
+        "billing_address": {
+            "first_name": "Marian",
+            "last_name": "Maslowiec",
+            "phone": "4917620970459",
+            "address1": "Unnaer Str. 5",
+            "address2": "",
+            "city": "Werl",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "59457"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "4917620970459",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1017",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-18T13:40:36Z",
+        "comment": "Order from Shopify #1017",
+        "shipping_price": 0,
+        "address": {
+            "name": "Marian",
+            "surname": "Maslowiec",
+            "address1": "Unnaer Str. 5",
+            "address2": "",
+            "address3": "",
+            "postcode": "59457",
+            "city": "Werl",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "4917620970459",
+            "email": "maslowiecmarian7@gmail.com"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P45735",
+                "name": "Bigger By The Day - Legendary Series - 120 caps",
+                "qty": 2,
+                "price": "39.96",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

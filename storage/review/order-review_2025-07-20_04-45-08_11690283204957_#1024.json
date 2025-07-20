@@ -1,0 +1,154 @@
+{
+    "timestamp": "2025-07-20T04:45:08+00:00",
+    "order_info": {
+        "shopify_id": 11690283204957,
+        "order_name": "#1024",
+        "total_price": "20.78",
+        "currency": "EUR",
+        "created_at": "2025-07-20T04:37:58Z"
+    },
+    "customer_info": {
+        "name": "Siamak Soltani",
+        "email": "mb-as@web.de",
+        "phone": "+4915738799104"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Siamak",
+            "last_name": "Soltani",
+            "phone": "+4915738799104",
+            "address1": "Loschmidtstr 16-C",
+            "address2": "",
+            "city": "Berlin",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "10587"
+        },
+        "billing": {
+            "first_name": "Siamak",
+            "last_name": "Soltani",
+            "phone": "+4915738799104",
+            "address1": "Loschmidtstr 16-C",
+            "address2": "",
+            "city": "Berlin",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "10587"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "+4915738799104",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Liv.52 - 100 tablets",
+            "sku": "P32149",
+            "quantity": 3,
+            "price": "4.96"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11690283204957,
+        "order_number": 1024,
+        "name": "#1024",
+        "created_at": "2025-07-20T04:37:58Z",
+        "currency": "EUR",
+        "total_price": "20.78",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11690283204957_0",
+                "product_id": null,
+                "name": "Liv.52 - 100 tablets",
+                "quantity": 3,
+                "sku": "P32149",
+                "price": "4.96",
+                "fulfillable_quantity": 3,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Siamak",
+            "last_name": "Soltani",
+            "email": "mb-as@web.de",
+            "phone": "+4915738799104"
+        },
+        "shipping_address": {
+            "first_name": "Siamak",
+            "last_name": "Soltani",
+            "phone": "+4915738799104",
+            "address1": "Loschmidtstr 16-C",
+            "address2": "",
+            "city": "Berlin",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "10587"
+        },
+        "billing_address": {
+            "first_name": "Siamak",
+            "last_name": "Soltani",
+            "phone": "+4915738799104",
+            "address1": "Loschmidtstr 16-C",
+            "address2": "",
+            "city": "Berlin",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "10587"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "+4915738799104",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1024",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-20T04:37:58Z",
+        "comment": "Order from Shopify #1024",
+        "shipping_price": 0,
+        "address": {
+            "name": "Siamak",
+            "surname": "Soltani",
+            "address1": "Loschmidtstr 16-C",
+            "address2": "",
+            "address3": "",
+            "postcode": "10587",
+            "city": "Berlin",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "+4915738799104",
+            "email": "mb-as@web.de"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P32149",
+                "name": "Liv.52 - 100 tablets",
+                "qty": 3,
+                "price": "4.96",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

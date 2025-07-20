@@ -755,14 +755,45 @@ class ShopifyLink
     }
 
     /**
-     * Make a direct API call to Shopify API endpoint
+     * Execute a GraphQL query against Shopify Admin API
      * 
-     * @param string $endpoint API endpoint (without .json)
-     * @param array $params Query parameters
-     * @param string $method HTTP method (default: GET)
-     * @param array $data Data to send for POST/PUT requests
-     * @return array API response
+     * @param string $query The GraphQL query
+     * @param array $variables Query variables
+     * @return array Response data
      */
+    public function graphqlQuery(string $query, array $variables = []): array
+    {
+        try {
+            $payload = [
+                'query' => $query,
+                'variables' => $variables
+            ];
+            
+            $response = $this->client->post('graphql.json', [
+                'json' => $payload,
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'X-Shopify-Access-Token' => $this->config->get('SHOPIFY_ACCESS_TOKEN')
+                ]
+            ]);
+            
+            $data = json_decode($response->getBody()->getContents(), true);
+            
+            if (isset($data['errors'])) {
+                $this->logger->error('GraphQL query errors', [
+                    'errors' => $data['errors'],
+                    'query' => $query
+                ]);
+                throw new Exception('GraphQL query failed: ' . json_encode($data['errors']));
+            }
+            
+            return $data;
+        } catch (RequestException $e) {
+            $this->logger->error('GraphQL request failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
     public function get(string $endpoint, array $params = [], string $method = 'GET', array $data = []): array
     {
         $this->logger->info('Making direct API call to Shopify', [

@@ -17,7 +17,9 @@ class OrderSync
     private $logger;
     private string $storageDir;
     private string $orderCacheDir;
+    private string $jsOrdersDir;
     private int $cacheExpirationHours = 2; // Cache expires after 2 hours
+    private array $requiredTags;
 
     public function __construct()
     {
@@ -27,6 +29,18 @@ class OrderSync
         $this->db = Database::getInstance();
         $this->storageDir = dirname(__DIR__, 2) . '/storage';
         $this->orderCacheDir = $this->storageDir . '/cache/orders';
+        $this->jsOrdersDir = dirname(__DIR__, 2) . '/FetchOrdersJava/orders_data';
+        
+        // Load required tags from environment variable (comma-separated)
+        $requiredTagsEnv = $_ENV['ORDER_REQUIRED_TAGS'] ?? '';
+        $this->requiredTags = !empty($requiredTagsEnv) ? 
+            array_map('trim', explode(',', $requiredTagsEnv)) : [];
+        
+        if (!empty($this->requiredTags)) {
+            $this->logger->info('Order tag filtering enabled - only processing orders with tags: ' . implode(', ', $this->requiredTags));
+        } else {
+            $this->logger->info('No tag filtering configured - processing orders without ANY tags (completely unprocessed orders)');
+        }
         
         // Ensure cache directory exists
         if (!is_dir($this->orderCacheDir)) {
@@ -56,7 +70,13 @@ class OrderSync
             // 3. Check PowerBody for updates to existing orders
             $this->updateExistingOrders();
             
-            // 4. Update sync state for timestamp tracking only
+            // 4. Sync comments between systems
+            $this->syncComments();
+            
+            // 5. Sync returns/refunds
+            $this->syncReturns();
+            
+            // 6. Update sync state for timestamp tracking only
             $this->db->updateSyncState('order');
             
             $this->logger->info('Order sync completed successfully');
@@ -68,21 +88,313 @@ class OrderSync
 
     /**
      * Get unfulfilled orders from Shopify
+     * First tries to read from JavaScript-generated JSON files, then falls back to direct API
      * 
      * @return array Array of unfulfilled orders
      */
     public function getUnfulfilledShopifyOrders(): array
     {
+        // First, try to get orders from JavaScript component JSON files
+        $jsOrders = $this->getOrdersFromJavaScriptJson();
+        
+        if (!empty($jsOrders)) {
+            $this->logger->info('Using ' . count($jsOrders) . ' orders from JavaScript component JSON files');
+            return $this->filterUnfulfilledOrders($jsOrders);
+        }
+        
+        // Fallback to direct Shopify API
+        $this->logger->info('No orders found in JavaScript JSON files, fetching directly from Shopify API');
+        return $this->getOrdersDirectlyFromShopify();
+    }
+
+    /**
+     * Get orders from JavaScript-generated JSON files
+     * 
+     * @return array Array of orders from JSON files
+     */
+    private function getOrdersFromJavaScriptJson(): array
+    {
+        $ordersFile = $this->jsOrdersDir . '/orders.json';
+        
+        if (!file_exists($ordersFile)) {
+            $this->logger->info('JavaScript orders.json file not found: ' . $ordersFile);
+            return [];
+        }
+        
+        try {
+            $jsonContent = file_get_contents($ordersFile);
+            $data = json_decode($jsonContent, true);
+            
+            if (!$data || !isset($data['orders']['orders']['edges'])) {
+                $this->logger->warning('Invalid JavaScript orders.json structure');
+                return [];
+            }
+            
+            $orders = [];
+            foreach ($data['orders']['orders']['edges'] as $edge) {
+                $node = $edge['node'];
+                
+                // Convert GraphQL format to REST API format for compatibility
+                $order = $this->convertGraphQLOrderToRest($node);
+                $orders[] = $order;
+            }
+            
+            $this->logger->info('Successfully loaded ' . count($orders) . ' orders from JavaScript JSON file');
+            return $orders;
+            
+        } catch (Exception $e) {
+            $this->logger->error('Error reading JavaScript orders.json: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Convert GraphQL order format to REST API format for compatibility
+     * Enhanced with better phone number and address merging
+     * 
+     * @param array $graphqlOrder Order in GraphQL format
+     * @return array Order in REST API format
+     */
+    private function convertGraphQLOrderToRest(array $graphqlOrder): array
+    {
+        // Extract order ID from GraphQL ID
+        $orderId = str_replace('gid://shopify/Order/', '', $graphqlOrder['id']);
+        $orderNumber = str_replace('#', '', $graphqlOrder['name']);
+        
+        // Smart phone number prioritization: shipping address phone > customer phone
+        $bestPhone = $this->getBestPhoneNumber($graphqlOrder);
+        
+        // Convert line items
+        $lineItems = [];
+        if (isset($graphqlOrder['lineItems']['edges'])) {
+            foreach ($graphqlOrder['lineItems']['edges'] as $edge) {
+                $lineItem = $edge['node'];
+                
+                // Extract price from GraphQL originalUnitPriceSet structure
+                $price = '0.00';
+                if (isset($lineItem['originalUnitPriceSet']['shopMoney']['amount'])) {
+                    $price = $lineItem['originalUnitPriceSet']['shopMoney']['amount'];
+                } elseif (isset($lineItem['price'])) {
+                    // Fallback to direct price field if available
+                    $price = $lineItem['price'];
+                }
+                
+                $lineItems[] = [
+                    'id' => $lineItem['id'] ?? 'js_' . $orderId . '_' . count($lineItems),
+                    'product_id' => null, // Will be resolved later
+                    'name' => $lineItem['title'],
+                    'quantity' => $lineItem['quantity'],
+                    'sku' => $lineItem['sku'],
+                    'price' => $price,
+                    'fulfillable_quantity' => $lineItem['quantity'], // Assume all are fulfillable
+                    'grams' => 0 // Default
+                ];
+            }
+        }
+        
+        // Convert to REST API format with enhanced address/phone handling
+        $restOrder = [
+            'id' => (int)$orderId,
+            'order_number' => (int)$orderNumber,
+            'name' => $graphqlOrder['name'],
+            'created_at' => $graphqlOrder['createdAt'],
+            'currency' => $graphqlOrder['totalPriceSet']['shopMoney']['currencyCode'] ?? 'EUR',
+            'total_price' => $graphqlOrder['totalPriceSet']['shopMoney']['amount'] ?? '0.00',
+            'tags' => '', // Will be fetched separately if needed
+            'line_items' => $lineItems,
+            'customer' => [
+                'id' => null,
+                'first_name' => $graphqlOrder['customer']['firstName'] ?? '',
+                'last_name' => $graphqlOrder['customer']['lastName'] ?? '',
+                'email' => $graphqlOrder['customer']['email'] ?? '',
+                'phone' => $bestPhone // Use the best available phone number
+            ],
+            'shipping_address' => [
+                'first_name' => $graphqlOrder['customer']['firstName'] ?? '',
+                'last_name' => $graphqlOrder['customer']['lastName'] ?? '',
+                'phone' => $bestPhone, // Use the best available phone number
+                'address1' => $graphqlOrder['shippingAddress']['address1'] ?? '',
+                'address2' => $graphqlOrder['shippingAddress']['address2'] ?? '',
+                'city' => $graphqlOrder['shippingAddress']['city'] ?? '',
+                'province' => $graphqlOrder['shippingAddress']['province'] ?? '',
+                'country' => $graphqlOrder['shippingAddress']['country'] ?? '',
+                'country_code' => $this->getCountryCode($graphqlOrder['shippingAddress']['country'] ?? ''),
+                'zip' => $graphqlOrder['shippingAddress']['zip'] ?? ''
+            ],
+            'billing_address' => [
+                'first_name' => $graphqlOrder['customer']['firstName'] ?? '',
+                'last_name' => $graphqlOrder['customer']['lastName'] ?? '',
+                'phone' => $bestPhone, // Use the best available phone number
+                'address1' => $graphqlOrder['shippingAddress']['address1'] ?? '',
+                'address2' => $graphqlOrder['shippingAddress']['address2'] ?? '',
+                'city' => $graphqlOrder['shippingAddress']['city'] ?? '',
+                'province' => $graphqlOrder['shippingAddress']['province'] ?? '',
+                'country' => $graphqlOrder['shippingAddress']['country'] ?? '',
+                'country_code' => $this->getCountryCode($graphqlOrder['shippingAddress']['country'] ?? ''),
+                'zip' => $graphqlOrder['shippingAddress']['zip'] ?? ''
+            ],
+            'shipping_lines' => [
+                [
+                    'title' => 'Standard Shipping',
+                    'price' => '0.00' // Will be calculated based on total if needed
+                ]
+            ],
+            'fulfillments' => [],
+            'js_source' => true, // Flag to indicate this came from JavaScript component
+            'phone_sources' => $this->getPhoneSourceInfo($graphqlOrder) // Debug info for phone sources
+        ];
+        
+        $this->logger->debug('Converted GraphQL order to REST format', [
+            'order_id' => $orderId,
+            'order_number' => $orderNumber,
+            'line_items_count' => count($lineItems),
+            'best_phone' => $bestPhone,
+            'phone_sources' => $restOrder['phone_sources']
+        ]);
+        
+        return $restOrder;
+    }
+
+    /**
+     * Get the best available phone number from order data
+     * Priority: shipping address phone > customer phone
+     * 
+     * @param array $graphqlOrder Order in GraphQL format
+     * @return string Best available phone number
+     */
+    private function getBestPhoneNumber(array $graphqlOrder): string
+    {
+        $shippingPhone = trim($graphqlOrder['shippingAddress']['phone'] ?? '');
+        $customerPhone = trim($graphqlOrder['customer']['phone'] ?? '');
+        
+        // Priority: shipping address phone first (more reliable for delivery)
+        if (!empty($shippingPhone)) {
+            return $shippingPhone;
+        }
+        
+        if (!empty($customerPhone)) {
+            return $customerPhone;
+        }
+        
+        return ''; // No phone number available
+    }
+
+    /**
+     * Get phone source information for debugging
+     * 
+     * @param array $graphqlOrder Order in GraphQL format
+     * @return array Phone source information
+     */
+    private function getPhoneSourceInfo(array $graphqlOrder): array
+    {
+        return [
+            'shipping_phone' => $graphqlOrder['shippingAddress']['phone'] ?? null,
+            'customer_phone' => $graphqlOrder['customer']['phone'] ?? null,
+            'selected_source' => !empty($graphqlOrder['shippingAddress']['phone']) ? 'shipping' : 
+                               (!empty($graphqlOrder['customer']['phone']) ? 'customer' : 'none')
+        ];
+    }
+
+    /**
+     * Get country code from country name
+     * 
+     * @param string $countryName Country name
+     * @return string Country code
+     */
+    private function getCountryCode(string $countryName): string
+    {
+        $countryMap = [
+            'Germany' => 'DE',
+            'United States' => 'US',
+            'United Kingdom' => 'GB',
+            'France' => 'FR',
+            'Italy' => 'IT',
+            'Spain' => 'ES',
+            'Netherlands' => 'NL',
+            'Belgium' => 'BE',
+            'Austria' => 'AT',
+            'Switzerland' => 'CH'
+        ];
+        
+        return $countryMap[$countryName] ?? 'XX';
+    }
+
+    /**
+     * Filter orders to get only ones without ANY tags (unprocessed orders)
+     * 
+     * @param array $orders All orders
+     * @return array Orders without any tags
+     */
+    private function filterUnfulfilledOrders(array $orders): array
+    {
+        $filteredOrders = [];
+        
+        foreach ($orders as $order) {
+            // For orders from JavaScript, we need to check if they have any tags
+            // Since JS orders don't include tags, we need to fetch this from Shopify API
+            if (isset($order['js_source'])) {
+                $hasAnyTags = $this->checkIfOrderHasAnyTags($order['id']);
+                if (!$hasAnyTags) {
+                    $filteredOrders[] = $order;
+                }
+            } else {
+                // For direct API orders, check if order has any tags
+                $tags = isset($order['tags']) ? trim($order['tags']) : '';
+                
+                // Only include orders with no tags at all
+                if (empty($tags)) {
+                    $filteredOrders[] = $order;
+                }
+            }
+        }
+        
+        $this->logger->info('Found ' . count($filteredOrders) . ' unfulfilled orders without ANY tags out of ' . count($orders) . ' total orders');
+        
+        return $filteredOrders;
+    }
+
+    /**
+     * Check if a specific order has any tags (for JavaScript-sourced orders)
+     * 
+     * @param int $orderId Order ID
+     * @return bool Whether order has any tags
+     */
+    private function checkIfOrderHasAnyTags(int $orderId): bool
+    {
+        try {
+            $order = $this->shopify->getOrder($orderId);
+            
+            if (!$order) {
+                return false;
+            }
+            
+            $tags = isset($order['tags']) ? trim($order['tags']) : '';
+            
+            // Return true if order has any tags at all
+            return !empty($tags);
+        } catch (Exception $e) {
+            $this->logger->warning('Could not check tags for order ' . $orderId . ': ' . $e->getMessage());
+            return false; // Assume no tags if we can't check
+        }
+    }
+
+    /**
+     * Get orders directly from Shopify API (fallback method)
+     * 
+     * @return array Array of unfulfilled orders without any tags
+     */
+    private function getOrdersDirectlyFromShopify(): array
+    {
         // Always fetch fresh orders from Shopify, don't use cache for processing
-        $this->logger->info('Fetching orders from the last 30 days');
+        $this->logger->info('Fetching orders from the last 30 days (excluding canceled orders)');
         
         // Get orders from the last 30 days
         $thirtyDaysAgo = (new DateTime('-30 days'))->format('c');
         
-        // Get unfulfilled orders from Shopify
+        // Get unfulfilled orders from Shopify (excluding canceled orders)
         $allOrders = [];
         $params = [
-            'status' => 'any',
+            'status' => 'open', // Changed from 'any' to 'open' to exclude canceled orders
             'fulfillment_status' => 'unfulfilled',
             'created_at_min' => $thirtyDaysAgo,
             'limit' => 250 // Shopify max limit
@@ -110,19 +422,19 @@ class OrderSync
         // Cache all fetched orders for reference only
         $this->cacheOrders($allOrders);
         
-        // Filter orders that haven't been synced to PowerBody yet (no PB_SYNCED tag)
+        // Filter orders that have NO tags at all (completely unprocessed orders)
         $filteredOrders = [];
         foreach ($allOrders as $order) {
-            // Check if order has PB_SYNCED tag
-            $tags = isset($order['tags']) ? explode(',', $order['tags']) : [];
-            $tags = array_map('trim', $tags);
+            // Check if order has any tags
+            $tags = isset($order['tags']) ? trim($order['tags']) : '';
             
-            if (!in_array('PB_SYNCED', $tags)) {
+            // Only include orders with no tags at all
+            if (empty($tags)) {
                 $filteredOrders[] = $order;
             }
         }
         
-        $this->logger->info('Found ' . count($filteredOrders) . ' unfulfilled orders without PB_SYNCED tag out of ' . count($allOrders) . ' total orders');
+        $this->logger->info('Found ' . count($filteredOrders) . ' unfulfilled open orders without ANY tags out of ' . count($allOrders) . ' total orders');
         
         return $filteredOrders;
     }
@@ -135,12 +447,118 @@ class OrderSync
         return true; // All products are from PowerBody
     }
 
+    /**
+     * Fetch complete order data using GraphQL API (limited fields for basic plans)
+     * This provides only non-PII order information available on basic Shopify plans
+     */
+    private function fetchCompleteOrderData(int $orderId): ?array
+    {
+        try {
+            // Remove customer PII fields that require Plus/Advanced plans
+            // Only query fields available on basic plans
+            $query = '
+                query getOrder($id: ID!) {
+                    order(id: $id) {
+                        id
+                        name
+                        createdAt
+                        tags
+                        financialStatus
+                        fulfillmentStatus
+                        processedAt
+                        updatedAt
+                        totalPriceSet {
+                            shopMoney {
+                                amount
+                                currencyCode
+                            }
+                        }
+                    }
+                }
+            ';
+            
+            $variables = [
+                'id' => 'gid://shopify/Order/' . $orderId
+            ];
+            
+            $response = $this->shopify->graphqlQuery($query, $variables);
+            
+            if (isset($response['data']['order'])) {
+                $this->logger->debug('Fetched basic order data via GraphQL', [
+                    'order_id' => $orderId
+                ]);
+                return $response['data']['order'];
+            }
+            
+            return null;
+        } catch (Exception $e) {
+            $this->logger->warning('Failed to fetch order data via GraphQL: ' . $e->getMessage(), [
+                'order_id' => $orderId
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Enhance order data by prioritizing JavaScript JSON data over GraphQL/REST API
+     * JavaScript component provides complete customer/address data via OAuth without plan restrictions
+     */
+    private function enhanceOrderWithCompleteData(array $shopifyOrder): array
+    {
+        // For JavaScript orders, fetch complete pricing data from Shopify REST API
+        if (isset($shopifyOrder['js_source']) && $shopifyOrder['js_source']) {
+            $this->logger->debug('Order from JavaScript source - using complete data as-is', [
+                'order_id' => $shopifyOrder['id']
+            ]);
+            
+            // Still fetch tags via GraphQL since JS might not have them
+            $basicOrder = $this->fetchCompleteOrderData($shopifyOrder['id']);
+            if ($basicOrder && isset($basicOrder['tags'])) {
+                $shopifyOrder['tags'] = $basicOrder['tags'];
+            }
+            
+            return $shopifyOrder;
+        }
+        
+        // For REST API orders, try to enhance with basic GraphQL data (no customer PII)
+        $basicOrder = $this->fetchCompleteOrderData($shopifyOrder['id']);
+        
+        if ($basicOrder) {
+            // Only enhance with non-PII fields available on basic plans
+            if (isset($basicOrder['tags'])) {
+                $shopifyOrder['tags'] = $basicOrder['tags'];
+            }
+            if (isset($basicOrder['financialStatus'])) {
+                $shopifyOrder['financial_status'] = $basicOrder['financialStatus'];
+            }
+            if (isset($basicOrder['fulfillmentStatus'])) {
+                $shopifyOrder['fulfillment_status'] = $basicOrder['fulfillmentStatus'];
+            }
+            
+            $this->logger->debug('Enhanced order with basic GraphQL data (no PII)', [
+                'order_id' => $shopifyOrder['id'],
+                'has_tags' => !empty($shopifyOrder['tags'])
+            ]);
+        }
+        
+        return $shopifyOrder;
+    }
+
     private function processShopifyOrder(array $shopifyOrder): void
     {
         $this->logger->info('Processing Shopify order', ['order_id' => $shopifyOrder['id']]);
         
+        // Enhance order with complete data from GraphQL API
+        $shopifyOrder = $this->enhanceOrderWithCompleteData($shopifyOrder);
+        
+        // Recalculate line item prices if they are missing or zero
+        $shopifyOrder = $this->recalculateLineItemPrices($shopifyOrder);
+        
         // Map Shopify order to PowerBody format
         $powerbodyOrder = $this->mapToPowerbodyOrder($shopifyOrder);
+        
+        // SAVE ORDERS BEFORE SENDING TO POWERBODY (for user review)
+        $this->saveOrdersForReview($shopifyOrder, $powerbodyOrder);
         
         // Validate order has all required fields before sending to PowerBody
         $validationErrors = $this->validatePowerbodyOrder($powerbodyOrder);
@@ -233,6 +651,78 @@ class OrderSync
             
             // Save to dead letter for retry
             $this->saveDeadLetter('exception', $shopifyOrder);
+        }
+    }
+
+    /**
+     * Save orders for user review before sending to PowerBody
+     * Saves both Shopify order data and mapped PowerBody order data
+     * 
+     * @param array $shopifyOrder Enhanced Shopify order data
+     * @param array $powerbodyOrder Mapped PowerBody order data
+     */
+    private function saveOrdersForReview(array $shopifyOrder, array $powerbodyOrder): void
+    {
+        try {
+            $reviewDir = $this->storageDir . '/review';
+            if (!is_dir($reviewDir)) {
+                mkdir($reviewDir, 0755, true);
+            }
+            
+            $timestamp = date('Y-m-d_H-i-s');
+            $orderId = $shopifyOrder['id'];
+            $orderName = $shopifyOrder['name'] ?? "#$orderId";
+            
+            // Create comprehensive review data
+            $reviewData = [
+                'timestamp' => date('c'),
+                'order_info' => [
+                    'shopify_id' => $orderId,
+                    'order_name' => $orderName,
+                    'total_price' => $shopifyOrder['total_price'] ?? '0.00',
+                    'currency' => $shopifyOrder['currency'] ?? 'EUR',
+                    'created_at' => $shopifyOrder['created_at'] ?? ''
+                ],
+                'customer_info' => [
+                    'name' => ($shopifyOrder['customer']['first_name'] ?? '') . ' ' . ($shopifyOrder['customer']['last_name'] ?? ''),
+                    'email' => $shopifyOrder['customer']['email'] ?? '',
+                    'phone' => $shopifyOrder['customer']['phone'] ?? ''
+                ],
+                'address_info' => [
+                    'shipping' => $shopifyOrder['shipping_address'] ?? [],
+                    'billing' => $shopifyOrder['billing_address'] ?? []
+                ],
+                'phone_analysis' => $shopifyOrder['phone_sources'] ?? [],
+                'line_items' => array_map(function($item) {
+                    return [
+                        'name' => $item['name'] ?? '',
+                        'sku' => $item['sku'] ?? '',
+                        'quantity' => $item['quantity'] ?? 0,
+                        'price' => $item['price'] ?? '0.00'
+                    ];
+                }, $shopifyOrder['line_items'] ?? []),
+                'shopify_order_raw' => $shopifyOrder,
+                'powerbody_order_mapped' => $powerbodyOrder
+            ];
+            
+            // Save to review file
+            $filename = "order-review_{$timestamp}_{$orderId}_{$orderName}.json";
+            $filepath = $reviewDir . '/' . $filename;
+            
+            file_put_contents($filepath, json_encode($reviewData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            
+            $this->logger->info('Order saved for review', [
+                'order_id' => $orderId,
+                'review_file' => $filename,
+                'customer_phone' => $shopifyOrder['customer']['phone'] ?? 'none',
+                'shipping_phone' => $shopifyOrder['shipping_address']['phone'] ?? 'none',
+                'final_phone' => $powerbodyOrder['address']['phone'] ?? 'none'
+            ]);
+            
+        } catch (Exception $e) {
+            $this->logger->error('Failed to save order for review: ' . $e->getMessage(), [
+                'order_id' => $shopifyOrder['id'] ?? 'unknown'
+            ]);
         }
     }
 
@@ -382,30 +872,58 @@ class OrderSync
     {
         // Extract shipping info - always use the shipping address directly
         $shipping = $shopifyOrder['shipping_address'] ?? null;
+        $customer = $shopifyOrder['customer'] ?? null;
         
-        // Handle missing shipping address (should be rare)
-        if (!$shipping) {
-            $this->logger->warning('No shipping address in Shopify order', [
+        // Handle missing or incomplete shipping address
+        if (!$shipping || empty($shipping['first_name']) || empty($shipping['address1'])) {
+            $this->logger->info('Incomplete shipping address, using customer and billing data as fallback', [
                 'order_id' => $shopifyOrder['id']
             ]);
             
-            // Use customer info as fallback
+            // Try to get better data from customer and billing address
+            $billing = $shopifyOrder['billing_address'] ?? null;
+            
+            // Build complete address from available data
             $shipping = [
-                'first_name' => $shopifyOrder['customer']['first_name'] ?? 'Customer',
-                'last_name' => $shopifyOrder['customer']['last_name'] ?? 'Unknown',
-                'address1' => 'Address not provided',
-                'address2' => '',
-                'city' => 'City not provided',
-                'zip' => '00000',
-                'province' => '',
-                'country' => 'Unknown',
-                'country_code' => 'XX',
-                'phone' => $shopifyOrder['customer']['phone'] ?? '0000000000'
+                'first_name' => $shipping['first_name'] ?? $customer['first_name'] ?? $billing['first_name'] ?? 'Customer',
+                'last_name' => $shipping['last_name'] ?? $customer['last_name'] ?? $billing['last_name'] ?? 'Unknown',
+                'address1' => $shipping['address1'] ?? $billing['address1'] ?? 'Address not provided',
+                'address2' => $shipping['address2'] ?? $billing['address2'] ?? '',
+                'city' => $shipping['city'] ?? $billing['city'] ?? 'City not provided',
+                'zip' => $shipping['zip'] ?? $billing['zip'] ?? '00000',
+                'province' => $shipping['province'] ?? $billing['province'] ?? '',
+                'country' => $shipping['country'] ?? $billing['country'] ?? 'Unknown',
+                'country_code' => $shipping['country_code'] ?? $billing['country_code'] ?? 'XX',
+                'phone' => $shipping['phone'] ?? $customer['phone'] ?? $billing['phone'] ?? $customer['default_address']['phone'] ?? '0000000000'
             ];
         }
         
-        // Ensure email is available
-        $email = $shopifyOrder['contact_email'] ?? $shopifyOrder['customer']['email'] ?? 'no-email@example.com';
+        // Ensure we have complete address data - final fallback
+        $shipping['first_name'] = $shipping['first_name'] ?: ($customer['first_name'] ?? 'Customer');
+        $shipping['last_name'] = $shipping['last_name'] ?: ($customer['last_name'] ?? 'Unknown');
+        $shipping['address1'] = $shipping['address1'] ?: 'Address not provided';
+        $shipping['city'] = $shipping['city'] ?: 'City not provided';
+        $shipping['zip'] = $shipping['zip'] ?: '00000';
+        $shipping['country'] = $shipping['country'] ?: 'Unknown';
+        $shipping['country_code'] = $shipping['country_code'] ?: 'XX';
+        $shipping['phone'] = $shipping['phone'] ?: '0000000000';
+        
+        // Ensure email is available from multiple sources
+        $email = $shopifyOrder['contact_email'] ?? 
+                $shopifyOrder['email'] ?? 
+                $customer['email'] ?? 
+                $shopifyOrder['billing_address']['email'] ?? 
+                'no-email@example.com';
+        
+        // Log the final address data for debugging
+        $this->logger->debug('Final address data', [
+            'order_id' => $shopifyOrder['id'],
+            'name' => $shipping['first_name'] . ' ' . $shipping['last_name'],
+            'email' => $email,
+            'address1' => $shipping['address1'],
+            'city' => $shipping['city'],
+            'country' => $shipping['country']
+        ]);
         
         // Extract products - all products are from PowerBody
         $products = [];
@@ -453,7 +971,7 @@ class OrderSync
                 'address3' => '',
                 'postcode' => $shipping['zip'],
                 'city' => $shipping['city'],
-                'county' => $shipping['province'],
+                'county' => $shipping['province'] ?? '',
                 'country_name' => $shipping['country'],
                 'country_code' => $shipping['country_code'],
                 'phone' => $shipping['phone'],
@@ -485,19 +1003,49 @@ class OrderSync
             
             $updatedTags = implode(', ', $tagsArray);
             
-            // Update order tags and set fulfillment status to 'on-hold'
+            // Update order tags and add note
             $updateData = [
                 'tags' => $updatedTags,
-                'note' => ($order['note'] ? $order['note'] . "\n\n" : '') . 'Order sent to PowerBody Dropshipping'
+                'note' => ($order['note'] ? $order['note'] . "\n\n" : '') . 'Order sent to PowerBody'
             ];
             
             $this->shopify->updateOrder($orderId, $updateData);
             
-            // Create a fulfillment with 'on-hold' status
+            // Check if order already has fulfillments
+            $existingFulfillments = $order['fulfillments'] ?? [];
+            if (!empty($existingFulfillments)) {
+                $this->logger->info('Order already has fulfillments, skipping fulfillment creation', [
+                    'order_id' => $orderId,
+                    'fulfillment_count' => count($existingFulfillments)
+                ]);
+                return;
+            }
+            
+            // Prepare line items for fulfillment (all line items that can be fulfilled)
+            $lineItems = [];
+            foreach ($order['line_items'] as $item) {
+                // Only include items that are fulfillable
+                if ($item['fulfillable_quantity'] > 0) {
+                    $lineItems[] = [
+                        'id' => $item['id'],
+                        'quantity' => $item['fulfillable_quantity']
+                    ];
+                }
+            }
+            
+            // Only create fulfillment if there are items to fulfill
+            if (empty($lineItems)) {
+                $this->logger->info('No fulfillable items in order, skipping fulfillment creation', [
+                    'order_id' => $orderId
+                ]);
+                return;
+            }
+            
+            // Create a fulfillment with proper line items
             $fulfillmentData = [
                 'location_id' => $this->shopify->getLocationId(),
-                'status' => 'open',
                 'notify_customer' => false,
+                'line_items' => $lineItems,
                 'tracking_info' => [
                     'company' => 'PowerBody Dropshipping',
                     'number' => 'Awaiting processing'
@@ -506,9 +1054,11 @@ class OrderSync
             
             $this->shopify->createFulfillment($orderId, $fulfillmentData);
             
-            $this->logger->info('Updated Shopify order status to on-hold', [
-                'order_id' => $orderId
+            $this->logger->info('Successfully created fulfillment for order', [
+                'order_id' => $orderId,
+                'line_items_count' => count($lineItems)
             ]);
+            
         } catch (Exception $e) {
             $this->logger->error('Failed to update Shopify order status: ' . $e->getMessage(), [
                 'order_id' => $orderId
@@ -541,7 +1091,7 @@ class OrderSync
             
             // Find orders in Shopify that have been synced to PowerBody (have PB_SYNCED tag)
             $params = [
-                'status' => 'any',
+                'status' => 'open', // Changed from 'any' to 'open' to exclude canceled orders
                 'tag' => 'PB_SYNCED', // Use tag to find synced orders
                 'created_at_min' => (new DateTime('-30 days'))->format('c'),
                 'limit' => 250
@@ -568,11 +1118,11 @@ class OrderSync
                         }
                     }
                     
-                    // If not found in the first batch, search directly
+                    // If not found in the first batch, search directly (excluding canceled orders)
                     if (!$shopifyOrderId) {
                         $searchParams = [
                             'name' => '#' . $orderNumber,
-                            'status' => 'any'
+                            'status' => 'open' // Changed from 'any' to 'open' to exclude canceled orders
                         ];
                         
                         $matchingOrders = $this->shopify->getOrders($searchParams);
@@ -644,30 +1194,67 @@ class OrderSync
             $fulfillments = $order['fulfillments'] ?? [];
             
             foreach ($fulfillments as $fulfillment) {
-                if ($fulfillment['tracking_number'] === $trackingNumber) {
+                if (isset($fulfillment['tracking_number']) && $fulfillment['tracking_number'] === $trackingNumber) {
                     // Tracking already set
+                    $this->logger->info('Tracking number already set for order', [
+                        'order_id' => $orderId,
+                        'tracking_number' => $trackingNumber
+                    ]);
                     return;
                 }
             }
             
-            // If no fulfillments or tracking is different, create/update fulfillment
-            $fulfillmentData = [
-                'location_id' => $this->shopify->getLocationId(),
-                'status' => 'success',
-                'notify_customer' => true,
-                'tracking_info' => [
-                    'number' => $trackingNumber,
-                    'url' => 'https://track-trace.com/' . $trackingNumber,
-                    'company' => 'PowerBody Shipping'
-                ]
-            ];
-            
             if (!empty($fulfillments)) {
-                // Update existing fulfillment
+                // Update existing fulfillment with tracking info
+                $fulfillmentData = [
+                    'tracking_info' => [
+                        'number' => $trackingNumber,
+                        'url' => 'https://track-trace.com/' . $trackingNumber,
+                        'company' => 'PowerBody Shipping'
+                    ]
+                ];
+                
                 $this->shopify->updateFulfillment($fulfillments[0]['id'], $fulfillmentData);
+                $this->logger->info('Updated existing fulfillment with tracking', [
+                    'order_id' => $orderId,
+                    'fulfillment_id' => $fulfillments[0]['id'],
+                    'tracking_number' => $trackingNumber
+                ]);
             } else {
-                // Create new fulfillment
-                $this->shopify->createFulfillment($orderId, $fulfillmentData);
+                // Create new fulfillment with tracking - need line items
+                $lineItems = [];
+                foreach ($order['line_items'] as $item) {
+                    if ($item['fulfillable_quantity'] > 0) {
+                        $lineItems[] = [
+                            'id' => $item['id'],
+                            'quantity' => $item['fulfillable_quantity']
+                        ];
+                    }
+                }
+                
+                if (empty($lineItems)) {
+                    $this->logger->info('No fulfillable items for tracking update, adding note only', [
+                        'order_id' => $orderId
+                    ]);
+                } else {
+                    $fulfillmentData = [
+                        'location_id' => $this->shopify->getLocationId(),
+                        'notify_customer' => true,
+                        'line_items' => $lineItems,
+                        'tracking_info' => [
+                            'number' => $trackingNumber,
+                            'url' => 'https://track-trace.com/' . $trackingNumber,
+                            'company' => 'PowerBody Shipping'
+                        ]
+                    ];
+                    
+                    $this->shopify->createFulfillment($orderId, $fulfillmentData);
+                    $this->logger->info('Created new fulfillment with tracking', [
+                        'order_id' => $orderId,
+                        'tracking_number' => $trackingNumber,
+                        'line_items_count' => count($lineItems)
+                    ]);
+                }
             }
             
             // Add tracking note to order
@@ -908,14 +1495,13 @@ class OrderSync
         try {
             $this->logger->info('Retrying processing of Shopify order', ['order_id' => $shopifyOrder['id']]);
             
-            // Check if order already has PB_SYNCED tag
+            // Check if order already has any tags (meaning it was already processed)
             $order = $this->shopify->getOrder($shopifyOrder['id']);
             if ($order) {
-                $tags = isset($order['tags']) ? explode(',', $order['tags']) : [];
-                $tags = array_map('trim', $tags);
+                $tags = isset($order['tags']) ? trim($order['tags']) : '';
                 
-                if (in_array('PB_SYNCED', $tags)) {
-                    $this->logger->info('Order already processed (has PB_SYNCED tag)', [
+                if (!empty($tags)) {
+                    $this->logger->info('Order already processed (has tags: ' . $tags . ')', [
                         'shopify_order_id' => $shopifyOrder['id']
                     ]);
                     return true;
@@ -992,5 +1578,565 @@ class OrderSync
             ]);
             return false;
         }
+    }
+
+    /**
+     * Sync comments between PowerBody and Shopify
+     */
+    private function syncComments(): void
+    {
+        try {
+            $this->logger->info('Starting comment sync');
+            
+            // 1. Get comments from PowerBody
+            $powerbodyComments = $this->getCommentsFromPowerbody();
+            
+            // 2. Process comments and sync to Shopify
+            $this->syncCommentsToShopify($powerbodyComments);
+            
+            // 3. Get comments from Shopify and sync to PowerBody
+            $this->syncCommentsFromShopify();
+            
+            $this->logger->info('Comment sync completed successfully');
+        } catch (Exception $e) {
+            $this->logger->error('Comment sync failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get comments from PowerBody API
+     */
+    private function getCommentsFromPowerbody(): array
+    {
+        $this->logger->info('Fetching comments from PowerBody');
+        
+        try {
+            $comments = $this->powerbody->getComments();
+            
+            if (!is_array($comments)) {
+                $this->logger->error('Expected array from PowerBody API, got ' . gettype($comments));
+                return [];
+            }
+            
+            $this->logger->info('Fetched ' . count($comments) . ' comment entries from PowerBody');
+            return $comments;
+        } catch (Exception $e) {
+            $this->logger->error('Failed to fetch comments from PowerBody: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Sync comments from PowerBody to Shopify
+     */
+    private function syncCommentsToShopify(array $powerbodyComments): void
+    {
+        if (empty($powerbodyComments)) {
+            $this->logger->info('No PowerBody comments to sync to Shopify');
+            return;
+        }
+        
+        $this->logger->info('Syncing PowerBody comments to Shopify');
+        $processedCount = 0;
+        
+        foreach ($powerbodyComments as $commentData) {
+            if (!isset($commentData['id']) || !isset($commentData['comments'])) {
+                $this->logger->warning('Invalid comment data structure, skipping');
+                continue;
+            }
+            
+            $powerbodyOrderId = $commentData['id'];
+            $shopifyOrderId = $this->db->getShopifyOrderId($powerbodyOrderId);
+            
+            if (!$shopifyOrderId) {
+                $this->logger->debug('No matching Shopify order for PowerBody order ID: ' . $powerbodyOrderId);
+                continue;
+            }
+            
+            // Check if there are any PowerBody-side comments
+            if (!isset($commentData['comments']['side_powerbody']) || empty($commentData['comments']['side_powerbody'])) {
+                $this->logger->debug('No PowerBody-side comments for order: ' . $powerbodyOrderId);
+                continue;
+            }
+            
+            // Process each PowerBody comment
+            foreach ($commentData['comments']['side_powerbody'] as $comment) {
+                // Check if comment is already synced to Shopify
+                $commentId = $this->getCommentIdentifier($comment);
+                $isCommentSynced = $this->db->isCommentSynced('powerbody_to_shopify', $commentId);
+                
+                if ($isCommentSynced) {
+                    $this->logger->debug('Comment already synced to Shopify, skipping', [
+                        'comment_id' => $commentId,
+                        'order_id' => $shopifyOrderId
+                    ]);
+                    continue;
+                }
+                
+                // Add comment to Shopify order
+                $commentText = '[PowerBody: ' . $comment['author_name'] . '] ' . $comment['comment'];
+                
+                try {
+                    $result = $this->shopify->addNoteToOrder($shopifyOrderId, $commentText);
+                    
+                    if ($result) {
+                        // Mark comment as synced
+                        $this->db->markCommentSynced('powerbody_to_shopify', $commentId);
+                        $processedCount++;
+                        
+                        $this->logger->info('Added PowerBody comment to Shopify order', [
+                            'shopify_order_id' => $shopifyOrderId,
+                            'powerbody_order_id' => $powerbodyOrderId
+                        ]);
+                    } else {
+                        $this->logger->warning('Failed to add comment to Shopify order', [
+                            'shopify_order_id' => $shopifyOrderId
+                        ]);
+                    }
+                } catch (Exception $e) {
+                    $this->logger->error('Error adding comment to Shopify order: ' . $e->getMessage(), [
+                        'shopify_order_id' => $shopifyOrderId
+                    ]);
+                }
+            }
+        }
+        
+        $this->logger->info('Synced ' . $processedCount . ' PowerBody comments to Shopify');
+    }
+
+    /**
+     * Sync comments from Shopify to PowerBody
+     */
+    private function syncCommentsFromShopify(): void
+    {
+        $this->logger->info('Syncing Shopify comments to PowerBody');
+        
+        // Get last sync time
+        $lastSyncTime = $this->db->getLastSyncTime('comment');
+        $createdAtMin = $lastSyncTime ?? (new DateTime('-1 day'))->format('c');
+        
+        // Get recent orders with notes from Shopify
+        $params = [
+            'updated_at_min' => $createdAtMin,
+            'limit' => 250,
+            'fields' => 'id,name,order_number,note,updated_at'
+        ];
+        
+        $shopifyOrders = $this->shopify->getOrders($params);
+        $processedCount = 0;
+        
+        foreach ($shopifyOrders as $order) {
+            // Skip orders without notes
+            if (empty($order['note'])) {
+                continue;
+            }
+            
+            // Get PowerBody order ID
+            $powerbodyOrderId = $this->db->getPowerbodyOrderId($order['id']);
+            
+            if (!$powerbodyOrderId) {
+                $this->logger->debug('No matching PowerBody order for Shopify order ID: ' . $order['id']);
+                continue;
+            }
+            
+            // Check if note is already synced to PowerBody
+            $noteId = 'shopify_' . $order['id'] . '_' . md5($order['note']);
+            $isNoteSynced = $this->db->isCommentSynced('shopify_to_powerbody', $noteId);
+            
+            if ($isNoteSynced) {
+                $this->logger->debug('Note already synced to PowerBody, skipping', [
+                    'note_id' => $noteId,
+                    'order_id' => $order['id']
+                ]);
+                continue;
+            }
+            
+            // Prepare comment data for PowerBody
+            $commentData = [
+                'id' => $powerbodyOrderId,
+                'comments' => [
+                    [
+                        'author_name' => 'Shopify Customer',
+                        'comment' => $order['note'],
+                        'created_at' => $order['updated_at']
+                    ]
+                ]
+            ];
+            
+            try {
+                $result = $this->powerbody->insertComment($commentData);
+                
+                if ($result && isset($result['api_response']) && $result['api_response'] === 'SUCCESS') {
+                    // Mark note as synced
+                    $this->db->markCommentSynced('shopify_to_powerbody', $noteId);
+                    $processedCount++;
+                    
+                    $this->logger->info('Added Shopify note to PowerBody order', [
+                        'shopify_order_id' => $order['id'],
+                        'powerbody_order_id' => $powerbodyOrderId
+                    ]);
+                } else {
+                    $this->logger->warning('Failed to add note to PowerBody order', [
+                        'powerbody_order_id' => $powerbodyOrderId,
+                        'response' => json_encode($result)
+                    ]);
+                }
+            } catch (Exception $e) {
+                $this->logger->error('Error adding note to PowerBody order: ' . $e->getMessage(), [
+                    'powerbody_order_id' => $powerbodyOrderId
+                ]);
+            }
+        }
+        
+        $this->logger->info('Synced ' . $processedCount . ' Shopify notes to PowerBody');
+    }
+
+    /**
+     * Generate a unique identifier for a comment
+     */
+    private function getCommentIdentifier(array $comment): string
+    {
+        return 'pb_' . md5($comment['author_name'] . '_' . $comment['comment'] . '_' . $comment['created_at']);
+    }
+
+    /**
+     * Sync returns/refunds between PowerBody and Shopify
+     */
+    private function syncReturns(): void
+    {
+        try {
+            $this->logger->info('Starting return/refund sync');
+            
+            // 1. Get refund orders from PowerBody
+            $powerbodyRefunds = $this->getRefundsFromPowerbody();
+            
+            // 2. Process refunds and create them in Shopify if needed
+            $this->syncRefundsToShopify($powerbodyRefunds);
+            
+            $this->logger->info('Return/refund sync completed successfully');
+        } catch (Exception $e) {
+            $this->logger->error('Return/refund sync failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get refund orders from PowerBody API
+     */
+    private function getRefundsFromPowerbody(): array
+    {
+        $this->logger->info('Fetching refund orders from PowerBody');
+        
+        // Get last sync time
+        $lastSyncTime = $this->db->getLastSyncTime('refund');
+        $fromDate = $lastSyncTime ? new DateTime($lastSyncTime) : new DateTime('-7 days');
+        
+        $filter = [
+            'from' => $fromDate->format('Y-m-d'),
+            'to' => (new DateTime())->format('Y-m-d')
+        ];
+        
+        try {
+            $refunds = $this->powerbody->getRefundOrders($filter);
+            
+            if (!is_array($refunds)) {
+                $this->logger->error('Expected array from PowerBody API, got ' . gettype($refunds));
+                return [];
+            }
+            
+            $this->logger->info('Fetched ' . count($refunds) . ' refund orders from PowerBody');
+            return $refunds;
+        } catch (Exception $e) {
+            $this->logger->error('Failed to fetch refund orders from PowerBody: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Sync refunds from PowerBody to Shopify
+     */
+    private function syncRefundsToShopify(array $powerbodyRefunds): void
+    {
+        if (empty($powerbodyRefunds)) {
+            $this->logger->info('No PowerBody refunds to sync to Shopify');
+            return;
+        }
+        
+        $this->logger->info('Syncing PowerBody refunds to Shopify');
+        $processedCount = 0;
+        
+        foreach ($powerbodyRefunds as $refund) {
+            if (!isset($refund['parent_id']) || !isset($refund['items']) || !isset($refund['refund_grand_total'])) {
+                $this->logger->warning('Invalid refund data structure, skipping');
+                continue;
+            }
+            
+            $powerbodyOrderId = $refund['parent_id'];
+            $shopifyOrderId = $this->db->getShopifyOrderId($powerbodyOrderId);
+            
+            if (!$shopifyOrderId) {
+                $this->logger->debug('No matching Shopify order for PowerBody order ID: ' . $powerbodyOrderId);
+                continue;
+            }
+            
+            // Generate a unique ID for this refund to track if it's been processed
+            $refundId = $powerbodyOrderId . '_' . md5(json_encode($refund));
+            $shopifyRefundId = $this->db->getShopifyRefundId($refundId);
+            
+            if ($shopifyRefundId) {
+                $this->logger->debug('Refund already processed in Shopify, skipping', [
+                    'powerbody_order_id' => $powerbodyOrderId,
+                    'shopify_order_id' => $shopifyOrderId,
+                    'shopify_refund_id' => $shopifyRefundId
+                ]);
+                continue;
+            }
+            
+            // Get the Shopify order to prepare the refund
+            try {
+                $shopifyOrder = $this->shopify->getOrder($shopifyOrderId);
+                
+                if (!$shopifyOrder) {
+                    $this->logger->warning('Could not find Shopify order: ' . $shopifyOrderId);
+                    continue;
+                }
+                
+                // Prepare the refund data for Shopify
+                $refundData = $this->prepareShopifyRefundData($refund, $shopifyOrder);
+                
+                if (empty($refundData['refund']['refund_line_items'])) {
+                    $this->logger->warning('No matching line items found for refund', [
+                        'shopify_order_id' => $shopifyOrderId
+                    ]);
+                    continue;
+                }
+                
+                // Create the refund in Shopify
+                $shopifyRefundResult = $this->shopify->createRefund($shopifyOrderId, $refundData);
+                
+                if ($shopifyRefundResult && isset($shopifyRefundResult['id'])) {
+                    // Save the mapping
+                    $this->db->saveRefundMapping($shopifyRefundResult['id'], $refundId);
+                    $processedCount++;
+                    
+                    $this->logger->info('Successfully created refund in Shopify', [
+                        'shopify_order_id' => $shopifyOrderId,
+                        'shopify_refund_id' => $shopifyRefundResult['id'],
+                        'powerbody_order_id' => $powerbodyOrderId
+                    ]);
+                } else {
+                    $this->logger->error('Failed to create refund in Shopify', [
+                        'shopify_order_id' => $shopifyOrderId,
+                        'response' => json_encode($shopifyRefundResult)
+                    ]);
+                }
+            } catch (Exception $e) {
+                $this->logger->error('Error creating refund in Shopify: ' . $e->getMessage(), [
+                    'shopify_order_id' => $shopifyOrderId
+                ]);
+            }
+        }
+        
+        $this->logger->info('Synced ' . $processedCount . ' PowerBody refunds to Shopify');
+    }
+
+    /**
+     * Prepare refund data for Shopify API
+     */
+    private function prepareShopifyRefundData(array $powerbodyRefund, array $shopifyOrder): array
+    {
+        $refundLineItems = [];
+        $refundShipping = false;
+        $shippingAmount = 0;
+        
+        // Check if we need to refund shipping
+        if (isset($powerbodyRefund['is_refund_shipping']) && $powerbodyRefund['is_refund_shipping']) {
+            $refundShipping = true;
+            $shippingAmount = $powerbodyRefund['refund_shipping'] ?? 0;
+        }
+        
+        // Match line items by SKU
+        foreach ($powerbodyRefund['items'] as $refundItem) {
+            if (!isset($refundItem['sku']) || !isset($refundItem['qty_refunded'])) {
+                continue;
+            }
+            
+            $sku = $refundItem['sku'];
+            $qtyRefunded = (int)$refundItem['qty_refunded'];
+            
+            if ($qtyRefunded <= 0) {
+                continue;
+            }
+            
+            // Find matching line item in Shopify order
+            foreach ($shopifyOrder['line_items'] as $lineItem) {
+                if ($lineItem['sku'] === $sku) {
+                    $refundLineItems[] = [
+                        'line_item_id' => $lineItem['id'],
+                        'quantity' => $qtyRefunded,
+                        'restock_type' => 'return', // Options: 'no_restock', 'cancel', 'return'
+                        'location_id' => $_ENV['SHOPIFY_LOCATION_ID'] ?? null
+                    ];
+                    break;
+                }
+            }
+        }
+        
+        $refundData = [
+            'refund' => [
+                'refund_line_items' => $refundLineItems,
+                'notify' => true, // Send refund notification to customer
+                'note' => 'Refund processed by PowerBody'
+            ]
+        ];
+        
+        // Add shipping refund if needed
+        if ($refundShipping && $shippingAmount > 0) {
+            $refundData['refund']['shipping'] = [
+                'full_refund' => false,
+                'amount' => $shippingAmount
+            ];
+        }
+        
+        return $refundData;
+    }
+
+    /**
+     * Extract line item price from various data sources
+     * Falls back to calculating price based on total order value
+     * 
+     * @param array $lineItem Individual line item data
+     * @param array $allLineItems All line items in the order
+     * @param string $totalOrderPrice Total order price
+     * @return string Line item price
+     */
+    private function extractLineItemPrice(array $lineItem, array $allLineItems, string $totalOrderPrice): string
+    {
+        // First try to get price from GraphQL originalUnitPriceSet
+        if (isset($lineItem['originalUnitPriceSet']['shopMoney']['amount'])) {
+            return $lineItem['originalUnitPriceSet']['shopMoney']['amount'];
+        }
+        
+        // Try direct price field
+        if (isset($lineItem['price']) && $lineItem['price'] !== '0.00' && !empty($lineItem['price'])) {
+            return $lineItem['price'];
+        }
+        
+        // If no individual prices available, calculate based on total order value
+        // This distributes the total proportionally based on quantity
+        if (!empty($totalOrderPrice) && $totalOrderPrice !== '0.00') {
+            $totalQuantity = 0;
+            foreach ($allLineItems as $item) {
+                $totalQuantity += (int)($item['quantity'] ?? 0);
+            }
+            
+            if ($totalQuantity > 0) {
+                $itemQuantity = (int)($lineItem['quantity'] ?? 0);
+                $proportionalPrice = (float)$totalOrderPrice * ($itemQuantity / $totalQuantity);
+                return number_format($proportionalPrice, 2, '.', '');
+            }
+        }
+        
+        // Final fallback
+        return '0.00';
+    }
+
+    /**
+     * Recalculate line item prices for an order when they are missing
+     * 
+     * @param array $shopifyOrder Order data
+     * @return array Order with updated line item prices
+     */
+    private function recalculateLineItemPrices(array $shopifyOrder): array
+    {
+        $totalPrice = (float)($shopifyOrder['total_price'] ?? 0);
+        $lineItems = $shopifyOrder['line_items'] ?? [];
+        
+        if ($totalPrice <= 0 || empty($lineItems)) {
+            $this->logger->debug('Cannot recalculate prices: total price is zero or no line items', [
+                'order_id' => $shopifyOrder['id'] ?? 'unknown',
+                'total_price' => $totalPrice,
+                'line_items_count' => count($lineItems)
+            ]);
+            return $shopifyOrder;
+        }
+        
+        // Check if any line items have zero prices
+        $hasZeroPrices = false;
+        $zeroCount = 0;
+        foreach ($lineItems as $item) {
+            if (empty($item['price']) || $item['price'] === '0.00') {
+                $hasZeroPrices = true;
+                $zeroCount++;
+            }
+        }
+        
+        if (!$hasZeroPrices) {
+            $this->logger->debug('All line items already have prices, no recalculation needed', [
+                'order_id' => $shopifyOrder['id'] ?? 'unknown'
+            ]);
+            return $shopifyOrder; // No need to recalculate
+        }
+        
+        $this->logger->info('Recalculating line item prices', [
+            'order_id' => $shopifyOrder['id'] ?? 'unknown',
+            'total_price' => $totalPrice,
+            'zero_price_items' => $zeroCount,
+            'total_items' => count($lineItems)
+        ]);
+        
+        // Calculate total quantity for proportional distribution
+        $totalQuantity = 0;
+        foreach ($lineItems as $item) {
+            $totalQuantity += (int)($item['quantity'] ?? 0);
+        }
+        
+        if ($totalQuantity === 0) {
+            $this->logger->warning('Total quantity is zero, cannot distribute prices', [
+                'order_id' => $shopifyOrder['id'] ?? 'unknown'
+            ]);
+            return $shopifyOrder;
+        }
+        
+        // Recalculate prices proportionally
+        $calculatedTotal = 0;
+        $processedItems = 0;
+        $totalItemsToProcess = 0;
+        
+        // Count how many items need price calculation
+        foreach ($shopifyOrder['line_items'] as $item) {
+            if (empty($item['price']) || $item['price'] === '0.00') {
+                $totalItemsToProcess++;
+            }
+        }
+        
+        foreach ($shopifyOrder['line_items'] as &$item) {
+            if (empty($item['price']) || $item['price'] === '0.00') {
+                $itemQuantity = (int)($item['quantity'] ?? 0);
+                $processedItems++;
+                $oldPrice = $item['price'];
+                
+                if ($processedItems === $totalItemsToProcess) {
+                    // For the last item, adjust to match the exact total
+                    $item['price'] = number_format($totalPrice - $calculatedTotal, 2, '.', '');
+                } else {
+                    $proportionalPrice = $totalPrice * ($itemQuantity / $totalQuantity);
+                    $item['price'] = number_format($proportionalPrice, 2, '.', '');
+                    $calculatedTotal += (float)$item['price'];
+                }
+                
+                $this->logger->debug('Updated line item price', [
+                    'sku' => $item['sku'] ?? 'unknown',
+                    'quantity' => $itemQuantity,
+                    'old_price' => $oldPrice,
+                    'new_price' => $item['price']
+                ]);
+            }
+        }
+        
+        $this->logger->info('Successfully recalculated line item prices', [
+            'order_id' => $shopifyOrder['id'] ?? 'unknown'
+        ]);
+        
+        return $shopifyOrder;
     }
 } 

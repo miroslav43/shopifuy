@@ -1,0 +1,154 @@
+{
+    "timestamp": "2025-06-29T07:00:05+00:00",
+    "order_info": {
+        "shopify_id": 11641220432221,
+        "order_name": "#1011",
+        "total_price": "15.95",
+        "currency": "EUR",
+        "created_at": "2025-06-29T06:28:21Z"
+    },
+    "customer_info": {
+        "name": "Arzu Mehrali",
+        "email": "arzuhayirli@gmx.de",
+        "phone": "+491634956310"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Arzu",
+            "last_name": "Mehrali",
+            "phone": "+491634956310",
+            "address1": "Bruchstr 8",
+            "address2": "Hinterhof",
+            "city": "Mülheim an der Ruhr",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "45468"
+        },
+        "billing": {
+            "first_name": "Arzu",
+            "last_name": "Mehrali",
+            "phone": "+491634956310",
+            "address1": "Bruchstr 8",
+            "address2": "Hinterhof",
+            "city": "Mülheim an der Ruhr",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "45468"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "+491634956310",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Magnesium Malate, Natural - 120 grams",
+            "sku": "P50562",
+            "quantity": 1,
+            "price": "10.05"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11641220432221,
+        "order_number": 1011,
+        "name": "#1011",
+        "created_at": "2025-06-29T06:28:21Z",
+        "currency": "EUR",
+        "total_price": "15.95",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11641220432221_0",
+                "product_id": null,
+                "name": "Magnesium Malate, Natural - 120 grams",
+                "quantity": 1,
+                "sku": "P50562",
+                "price": "10.05",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Arzu",
+            "last_name": "Mehrali",
+            "email": "arzuhayirli@gmx.de",
+            "phone": "+491634956310"
+        },
+        "shipping_address": {
+            "first_name": "Arzu",
+            "last_name": "Mehrali",
+            "phone": "+491634956310",
+            "address1": "Bruchstr 8",
+            "address2": "Hinterhof",
+            "city": "Mülheim an der Ruhr",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "45468"
+        },
+        "billing_address": {
+            "first_name": "Arzu",
+            "last_name": "Mehrali",
+            "phone": "+491634956310",
+            "address1": "Bruchstr 8",
+            "address2": "Hinterhof",
+            "city": "Mülheim an der Ruhr",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "45468"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "+491634956310",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1011",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-06-29T06:28:21Z",
+        "comment": "Order from Shopify #1011",
+        "shipping_price": 0,
+        "address": {
+            "name": "Arzu",
+            "surname": "Mehrali",
+            "address1": "Bruchstr 8",
+            "address2": "Hinterhof",
+            "address3": "",
+            "postcode": "45468",
+            "city": "Mülheim an der Ruhr",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "+491634956310",
+            "email": "arzuhayirli@gmx.de"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P50562",
+                "name": "Magnesium Malate, Natural - 120 grams",
+                "qty": 1,
+                "price": "10.05",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

@@ -1,0 +1,154 @@
+{
+    "timestamp": "2025-07-18T10:45:05+00:00",
+    "order_info": {
+        "shopify_id": 11687809089885,
+        "order_name": "#1016",
+        "total_price": "35.66",
+        "currency": "EUR",
+        "created_at": "2025-07-18T10:43:00Z"
+    },
+    "customer_info": {
+        "name": "Josef Zweifel",
+        "email": "piwi.1962@gmx.de",
+        "phone": "0723163529"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Josef",
+            "last_name": "Zweifel",
+            "phone": "0723163529",
+            "address1": "Leipziger Straße",
+            "address2": "20c",
+            "city": "Pforzheim",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "75181"
+        },
+        "billing": {
+            "first_name": "Josef",
+            "last_name": "Zweifel",
+            "phone": "0723163529",
+            "address1": "Leipziger Straße",
+            "address2": "20c",
+            "city": "Pforzheim",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "75181"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "0723163529",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Liv.52 - 100 tablets",
+            "sku": "P32149",
+            "quantity": 6,
+            "price": "4.96"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11687809089885,
+        "order_number": 1016,
+        "name": "#1016",
+        "created_at": "2025-07-18T10:43:00Z",
+        "currency": "EUR",
+        "total_price": "35.66",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11687809089885_0",
+                "product_id": null,
+                "name": "Liv.52 - 100 tablets",
+                "quantity": 6,
+                "sku": "P32149",
+                "price": "4.96",
+                "fulfillable_quantity": 6,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Josef",
+            "last_name": "Zweifel",
+            "email": "piwi.1962@gmx.de",
+            "phone": "0723163529"
+        },
+        "shipping_address": {
+            "first_name": "Josef",
+            "last_name": "Zweifel",
+            "phone": "0723163529",
+            "address1": "Leipziger Straße",
+            "address2": "20c",
+            "city": "Pforzheim",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "75181"
+        },
+        "billing_address": {
+            "first_name": "Josef",
+            "last_name": "Zweifel",
+            "phone": "0723163529",
+            "address1": "Leipziger Straße",
+            "address2": "20c",
+            "city": "Pforzheim",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "75181"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "0723163529",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1016",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-18T10:43:00Z",
+        "comment": "Order from Shopify #1016",
+        "shipping_price": 0,
+        "address": {
+            "name": "Josef",
+            "surname": "Zweifel",
+            "address1": "Leipziger Straße",
+            "address2": "20c",
+            "address3": "",
+            "postcode": "75181",
+            "city": "Pforzheim",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "0723163529",
+            "email": "piwi.1962@gmx.de"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P32149",
+                "name": "Liv.52 - 100 tablets",
+                "qty": 6,
+                "price": "4.96",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

@@ -1,0 +1,204 @@
+{
+    "timestamp": "2025-07-13T14:45:07+00:00",
+    "order_info": {
+        "shopify_id": 11678077550941,
+        "order_name": "#1015",
+        "total_price": "53.99",
+        "currency": "EUR",
+        "created_at": "2025-07-13T14:35:28Z"
+    },
+    "customer_info": {
+        "name": "Robin Gassner",
+        "email": "robinjamesgassner@gmx.de",
+        "phone": "01726608201"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Robin",
+            "last_name": "Gassner",
+            "phone": "01726608201",
+            "address1": "Colmarerstr 1a",
+            "address2": "",
+            "city": "Stuttgart",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "70435"
+        },
+        "billing": {
+            "first_name": "Robin",
+            "last_name": "Gassner",
+            "phone": "01726608201",
+            "address1": "Colmarerstr 1a",
+            "address2": "",
+            "city": "Stuttgart",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "70435"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "01726608201",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Loaded EAA, Grape Gazillionz - 300 grams",
+            "sku": "P42209",
+            "quantity": 1,
+            "price": "15.78"
+        },
+        {
+            "name": "Cream of Rice, Custard Cream - 2000 grams",
+            "sku": "P47611",
+            "quantity": 1,
+            "price": "16.22"
+        },
+        {
+            "name": "Cream of Rice, White Chocolate Coconut - 2000 grams",
+            "sku": "P49284",
+            "quantity": 1,
+            "price": "16.09"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11678077550941,
+        "order_number": 1015,
+        "name": "#1015",
+        "created_at": "2025-07-13T14:35:28Z",
+        "currency": "EUR",
+        "total_price": "53.99",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11678077550941_0",
+                "product_id": null,
+                "name": "Loaded EAA, Grape Gazillionz - 300 grams",
+                "quantity": 1,
+                "sku": "P42209",
+                "price": "15.78",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11678077550941_1",
+                "product_id": null,
+                "name": "Cream of Rice, Custard Cream - 2000 grams",
+                "quantity": 1,
+                "sku": "P47611",
+                "price": "16.22",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11678077550941_2",
+                "product_id": null,
+                "name": "Cream of Rice, White Chocolate Coconut - 2000 grams",
+                "quantity": 1,
+                "sku": "P49284",
+                "price": "16.09",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Robin",
+            "last_name": "Gassner",
+            "email": "robinjamesgassner@gmx.de",
+            "phone": "01726608201"
+        },
+        "shipping_address": {
+            "first_name": "Robin",
+            "last_name": "Gassner",
+            "phone": "01726608201",
+            "address1": "Colmarerstr 1a",
+            "address2": "",
+            "city": "Stuttgart",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "70435"
+        },
+        "billing_address": {
+            "first_name": "Robin",
+            "last_name": "Gassner",
+            "phone": "01726608201",
+            "address1": "Colmarerstr 1a",
+            "address2": "",
+            "city": "Stuttgart",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "70435"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "01726608201",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1015",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-13T14:35:28Z",
+        "comment": "Order from Shopify #1015",
+        "shipping_price": 0,
+        "address": {
+            "name": "Robin",
+            "surname": "Gassner",
+            "address1": "Colmarerstr 1a",
+            "address2": "",
+            "address3": "",
+            "postcode": "70435",
+            "city": "Stuttgart",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "01726608201",
+            "email": "robinjamesgassner@gmx.de"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P42209",
+                "name": "Loaded EAA, Grape Gazillionz - 300 grams",
+                "qty": 1,
+                "price": "15.78",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P47611",
+                "name": "Cream of Rice, Custard Cream - 2000 grams",
+                "qty": 1,
+                "price": "16.22",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P49284",
+                "name": "Cream of Rice, White Chocolate Coconut - 2000 grams",
+                "qty": 1,
+                "price": "16.09",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

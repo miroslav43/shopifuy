@@ -1,0 +1,254 @@
+{
+    "timestamp": "2025-06-10T17:08:59+00:00",
+    "order_info": {
+        "shopify_id": 11583809618269,
+        "order_name": "#1009",
+        "total_price": "141.18",
+        "currency": "EUR",
+        "created_at": "2025-06-05T11:01:32Z"
+    },
+    "customer_info": {
+        "name": "Miodrag Vuin",
+        "email": "vuinmio@yahoo.com",
+        "phone": "004915142112113"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "phone": "004915142112113",
+            "address1": "Edelweißweg 9",
+            "address2": "",
+            "city": "Bad Zwischenahn",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "26160"
+        },
+        "billing": {
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "phone": "004915142112113",
+            "address1": "Edelweißweg 9",
+            "address2": "",
+            "city": "Bad Zwischenahn",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "26160"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "004915142112113",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Carb X, Orange Burst (EAN5056555206362) - 1200 grams",
+            "sku": "P48213",
+            "quantity": 1,
+            "price": "0.00"
+        },
+        {
+            "name": "Critical Whey, Salted Caramel - 2000 grams",
+            "sku": "P46040",
+            "quantity": 1,
+            "price": "0.00"
+        },
+        {
+            "name": "Switch On, Purple Haze - 225 grams",
+            "sku": "P45771",
+            "quantity": 1,
+            "price": "0.00"
+        },
+        {
+            "name": "Glutamine Drive, Unflavored - 1000 grams",
+            "sku": "P29849",
+            "quantity": 1,
+            "price": "0.00"
+        },
+        {
+            "name": "Horny Goat Weed Complex - 120 caps",
+            "sku": "P42289",
+            "quantity": 1,
+            "price": "0.00"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11583809618269,
+        "order_number": 1009,
+        "name": "#1009",
+        "created_at": "2025-06-05T11:01:32Z",
+        "currency": "EUR",
+        "total_price": "141.18",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11583809618269_0",
+                "product_id": null,
+                "name": "Carb X, Orange Burst (EAN5056555206362) - 1200 grams",
+                "quantity": 1,
+                "sku": "P48213",
+                "price": "0.00",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11583809618269_1",
+                "product_id": null,
+                "name": "Critical Whey, Salted Caramel - 2000 grams",
+                "quantity": 1,
+                "sku": "P46040",
+                "price": "0.00",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11583809618269_2",
+                "product_id": null,
+                "name": "Switch On, Purple Haze - 225 grams",
+                "quantity": 1,
+                "sku": "P45771",
+                "price": "0.00",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11583809618269_3",
+                "product_id": null,
+                "name": "Glutamine Drive, Unflavored - 1000 grams",
+                "quantity": 1,
+                "sku": "P29849",
+                "price": "0.00",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            },
+            {
+                "id": "js_11583809618269_4",
+                "product_id": null,
+                "name": "Horny Goat Weed Complex - 120 caps",
+                "quantity": 1,
+                "sku": "P42289",
+                "price": "0.00",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "email": "vuinmio@yahoo.com",
+            "phone": "004915142112113"
+        },
+        "shipping_address": {
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "phone": "004915142112113",
+            "address1": "Edelweißweg 9",
+            "address2": "",
+            "city": "Bad Zwischenahn",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "26160"
+        },
+        "billing_address": {
+            "first_name": "Miodrag",
+            "last_name": "Vuin",
+            "phone": "004915142112113",
+            "address1": "Edelweißweg 9",
+            "address2": "",
+            "city": "Bad Zwischenahn",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "26160"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "004915142112113",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1009_test",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-06-05T11:01:32Z",
+        "comment": "TEST Order from Shopify #1009 (Test Environment)",
+        "shipping_price": 0,
+        "address": {
+            "name": "Miodrag",
+            "surname": "Vuin",
+            "address1": "Edelweißweg 9",
+            "address2": "",
+            "address3": "",
+            "postcode": "26160",
+            "city": "Bad Zwischenahn",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "004915142112113",
+            "email": "vuinmio@yahoo.com"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P48213",
+                "name": "Carb X, Orange Burst (EAN5056555206362) - 1200 grams",
+                "qty": 1,
+                "price": "0.00",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P46040",
+                "name": "Critical Whey, Salted Caramel - 2000 grams",
+                "qty": 1,
+                "price": "0.00",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P45771",
+                "name": "Switch On, Purple Haze - 225 grams",
+                "qty": 1,
+                "price": "0.00",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P29849",
+                "name": "Glutamine Drive, Unflavored - 1000 grams",
+                "qty": 1,
+                "price": "0.00",
+                "currency": "EUR",
+                "tax": 0
+            },
+            {
+                "product_id": null,
+                "sku": "P42289",
+                "name": "Horny Goat Weed Complex - 120 caps",
+                "qty": 1,
+                "price": "0.00",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}

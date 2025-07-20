@@ -1,0 +1,154 @@
+{
+    "timestamp": "2025-07-19T05:15:08+00:00",
+    "order_info": {
+        "shopify_id": 11688891547997,
+        "order_name": "#1018",
+        "total_price": "29.68",
+        "currency": "EUR",
+        "created_at": "2025-07-19T05:09:49Z"
+    },
+    "customer_info": {
+        "name": "Carmen Villanueva de la Vega",
+        "email": "carmenvillanuevadv@gmail.com",
+        "phone": "+4917664101205"
+    },
+    "address_info": {
+        "shipping": {
+            "first_name": "Carmen",
+            "last_name": "Villanueva de la Vega",
+            "phone": "+4917664101205",
+            "address1": "Wittumgarten 24",
+            "address2": "",
+            "city": "Herrenberg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "71083"
+        },
+        "billing": {
+            "first_name": "Carmen",
+            "last_name": "Villanueva de la Vega",
+            "phone": "+4917664101205",
+            "address1": "Wittumgarten 24",
+            "address2": "",
+            "city": "Herrenberg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "71083"
+        }
+    },
+    "phone_analysis": {
+        "shipping_phone": "+4917664101205",
+        "customer_phone": null,
+        "selected_source": "shipping"
+    },
+    "line_items": [
+        {
+            "name": "Digest Basic - 180 caps",
+            "sku": "P47481",
+            "quantity": 1,
+            "price": "23.78"
+        }
+    ],
+    "shopify_order_raw": {
+        "id": 11688891547997,
+        "order_number": 1018,
+        "name": "#1018",
+        "created_at": "2025-07-19T05:09:49Z",
+        "currency": "EUR",
+        "total_price": "29.68",
+        "tags": "",
+        "line_items": [
+            {
+                "id": "js_11688891547997_0",
+                "product_id": null,
+                "name": "Digest Basic - 180 caps",
+                "quantity": 1,
+                "sku": "P47481",
+                "price": "23.78",
+                "fulfillable_quantity": 1,
+                "grams": 0
+            }
+        ],
+        "customer": {
+            "id": null,
+            "first_name": "Carmen",
+            "last_name": "Villanueva de la Vega",
+            "email": "carmenvillanuevadv@gmail.com",
+            "phone": "+4917664101205"
+        },
+        "shipping_address": {
+            "first_name": "Carmen",
+            "last_name": "Villanueva de la Vega",
+            "phone": "+4917664101205",
+            "address1": "Wittumgarten 24",
+            "address2": "",
+            "city": "Herrenberg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "71083"
+        },
+        "billing_address": {
+            "first_name": "Carmen",
+            "last_name": "Villanueva de la Vega",
+            "phone": "+4917664101205",
+            "address1": "Wittumgarten 24",
+            "address2": "",
+            "city": "Herrenberg",
+            "province": "",
+            "country": "Germany",
+            "country_code": "DE",
+            "zip": "71083"
+        },
+        "shipping_lines": [
+            {
+                "title": "Standard Shipping",
+                "price": "0.00"
+            }
+        ],
+        "fulfillments": [],
+        "js_source": true,
+        "phone_sources": {
+            "shipping_phone": "+4917664101205",
+            "customer_phone": null,
+            "selected_source": "shipping"
+        }
+    },
+    "powerbody_order_mapped": {
+        "id": "shopify_1018",
+        "status": "pending",
+        "currency_rate": 1,
+        "transport_code": "standard",
+        "weight": 0,
+        "date_add": "2025-07-19T05:09:49Z",
+        "comment": "Order from Shopify #1018",
+        "shipping_price": 0,
+        "address": {
+            "name": "Carmen",
+            "surname": "Villanueva de la Vega",
+            "address1": "Wittumgarten 24",
+            "address2": "",
+            "address3": "",
+            "postcode": "71083",
+            "city": "Herrenberg",
+            "county": "",
+            "country_name": "Germany",
+            "country_code": "DE",
+            "phone": "+4917664101205",
+            "email": "carmenvillanuevadv@gmail.com"
+        },
+        "products": [
+            {
+                "product_id": null,
+                "sku": "P47481",
+                "name": "Digest Basic - 180 caps",
+                "qty": 1,
+                "price": "23.78",
+                "currency": "EUR",
+                "tax": 0
+            }
+        ]
+    }
+}
