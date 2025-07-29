@@ -368,17 +368,18 @@ class ProductSync
                     continue;
                 }
                 
-                // Map to Shopify format
-                $shopifyProduct = $this->mapToShopifyProduct($pbProduct);
-                
                 // Store PowerBody ID for reference
-                $shopifyProduct['powerbody_id'] = $pbProduct['product_id'] ?? null;
+                $powerbodyId = $pbProduct['product_id'] ?? null;
                 
                 // Decide whether to create, update, or skip
                 if (isset($skuToExistingProduct[$pbProduct['sku']])) {
                     // Update existing product
                     $existingProduct = $skuToExistingProduct[$pbProduct['sku']]['product'];
+                    
+                    // Map to Shopify format with existing product data to preserve description
+                    $shopifyProduct = $this->mapToShopifyProduct($pbProduct, $existingProduct);
                     $shopifyProduct['id'] = $existingProduct['id'];
+                    $shopifyProduct['powerbody_id'] = $powerbodyId;
                     
                     // Clean up the product data to avoid metafield conflicts
                     unset($shopifyProduct['options']);
@@ -429,7 +430,9 @@ class ProductSync
                     
                     $productsToUpdate[] = $shopifyProduct;
                 } else {
-                    // Create new product
+                    // Create new product - map to Shopify format (no existing product data)
+                    $shopifyProduct = $this->mapToShopifyProduct($pbProduct);
+                    $shopifyProduct['powerbody_id'] = $powerbodyId;
                     $productsToCreate[] = $shopifyProduct;
                 }
             }
@@ -681,7 +684,7 @@ class ProductSync
         return $allProducts;
     }
 
-    private function mapToShopifyProduct(array $pbProduct): array
+    private function mapToShopifyProduct(array $pbProduct, array $existingProduct = null): array
     {
         $title = $pbProduct['name'] ?? 'Unknown Product';
         
@@ -777,9 +780,19 @@ class ProductSync
             ];
         }
         
-        // Add product description if available
-        if (!empty($pbProduct['description_en'])) {
-            $product['body_html'] = $this->addProductDisclaimer($pbProduct['description_en']);
+        // **PRESERVE EXISTING DESCRIPTIONS** - Only set description if product doesn't already have one
+        $hasExistingDescription = $existingProduct && !empty($existingProduct['body_html']) && trim($existingProduct['body_html']) !== '';
+        
+        if ($hasExistingDescription) {
+            // Preserve existing description
+            $this->logger->debug("Preserving existing description for product '{$title}' (SKU: {$sku})");
+            // Don't set body_html - leave existing description unchanged
+        } else {
+            // Only set description if no existing description OR this is a new product
+            if (!empty($pbProduct['description_en'])) {
+                $product['body_html'] = $this->addProductDisclaimer($pbProduct['description_en']);
+                $this->logger->debug("Setting new description for product '{$title}' (SKU: {$sku})");
+            }
         }
         
         // Add category as product_type in Shopify

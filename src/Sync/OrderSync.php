@@ -1493,9 +1493,17 @@ class OrderSync
     public function processSpecificOrder(array $shopifyOrder): bool
     {
         try {
-            $this->logger->info('Retrying processing of Shopify order', ['order_id' => $shopifyOrder['id']]);
+            $this->logger->info('=== DEAD LETTER RETRY: Starting order processing ===', [
+                'order_id' => $shopifyOrder['id'],
+                'order_name' => $shopifyOrder['name'] ?? 'unknown',
+                'order_number' => $shopifyOrder['order_number'] ?? 'unknown',
+                'customer_email' => $shopifyOrder['customer']['email'] ?? 'unknown',
+                'total_price' => $shopifyOrder['total_price'] ?? 'unknown',
+                'created_at' => $shopifyOrder['created_at'] ?? 'unknown'
+            ]);
             
             // Check if order already has any tags (meaning it was already processed)
+            $this->logger->info('Checking if order was already processed');
             $order = $this->shopify->getOrder($shopifyOrder['id']);
             if ($order) {
                 $tags = isset($order['tags']) ? trim($order['tags']) : '';
@@ -1505,53 +1513,112 @@ class OrderSync
                         'shopify_order_id' => $shopifyOrder['id']
                     ]);
                     return true;
+                } else {
+                    $this->logger->info('Order has no tags, proceeding with retry');
                 }
+            } else {
+                $this->logger->warning('Could not fetch current order state from Shopify, proceeding anyway');
             }
             
             // Map Shopify order to PowerBody format
+            $this->logger->info('Mapping order to PowerBody format');
             $powerbodyOrder = $this->mapToPowerbodyOrder($shopifyOrder);
             
+            // Log the PowerBody order structure for debugging
+            $this->logger->debug('PowerBody order data structure', [
+                'powerbody_order_id' => $powerbodyOrder['id'] ?? 'missing',
+                'address_fields' => array_keys($powerbodyOrder['address'] ?? []),
+                'product_count' => count($powerbodyOrder['products'] ?? []),
+                'products_info' => array_map(function($product) {
+                    return [
+                        'sku' => $product['sku'] ?? 'missing',
+                        'name' => $product['name'] ?? 'missing',
+                        'qty' => $product['qty'] ?? 'missing',
+                        'price' => $product['price'] ?? 'missing'
+                    ];
+                }, $powerbodyOrder['products'] ?? [])
+            ]);
+            
             // Validate order has all required fields before sending to PowerBody
+            $this->logger->info('Validating PowerBody order data');
             $validationErrors = $this->validatePowerbodyOrder($powerbodyOrder);
             if (!empty($validationErrors)) {
-                $this->logger->error('Order validation failed, missing required fields', [
+                $this->logger->error('=== DEAD LETTER RETRY: Order validation failed ===', [
                     'order_id' => $shopifyOrder['id'],
-                    'errors' => $validationErrors
+                    'validation_errors' => $validationErrors,
+                    'powerbody_order_data' => $powerbodyOrder
                 ]);
+                
+                // Log specific missing data for easier troubleshooting
+                $this->logger->error('Detailed validation failure analysis', [
+                    'missing_address_fields' => array_filter($validationErrors, function($error) {
+                        return strpos($error, 'address field') !== false;
+                    }),
+                    'missing_product_fields' => array_filter($validationErrors, function($error) {
+                        return strpos($error, 'product field') !== false;
+                    }),
+                    'missing_order_fields' => array_filter($validationErrors, function($error) {
+                        return strpos($error, 'order field') !== false;
+                    })
+                ]);
+                
                 return false;
+            } else {
+                $this->logger->info('PowerBody order validation passed');
             }
             
             // Create order in PowerBody
+            $this->logger->info('Sending order to PowerBody API', [
+                'powerbody_order_id' => $powerbodyOrder['id']
+            ]);
+            
             $response = $this->powerbody->createOrder($powerbodyOrder);
+            
+            // Log the full response for debugging
+            $this->logger->debug('PowerBody API full response', [
+                'response_type' => gettype($response),
+                'response_keys' => is_array($response) ? array_keys($response) : 'not_array',
+                'full_response' => $response
+            ]);
             
             // PowerBody API returns our request with additional 'api_response' field
             if (!isset($response['api_response'])) {
-                $this->logger->error('Invalid response from PowerBody API', [
+                $this->logger->error('=== DEAD LETTER RETRY: Invalid PowerBody API response ===', [
                     'order_id' => $shopifyOrder['id'],
-                    'response' => $response
+                    'powerbody_order_id' => $powerbodyOrder['id'],
+                    'response_structure' => $response,
+                    'missing_field' => 'api_response'
                 ]);
                 return false;
             }
             
             $apiResponse = $response['api_response'];
+            $this->logger->info('PowerBody API response received', [
+                'api_response' => $apiResponse,
+                'order_id' => $shopifyOrder['id']
+            ]);
             
             switch ($apiResponse) {
                 case 'SUCCESS':
+                    $this->logger->info('=== DEAD LETTER RETRY: SUCCESS ===', [
+                        'shopify_order_id' => $shopifyOrder['id'],
+                        'powerbody_order_id' => $powerbodyOrder['id']
+                    ]);
+                    
                     // Successfully created order
                     $this->addPbSyncedTag($shopifyOrder['id']);
                     
                     // Update Shopify order with tags and fulfillment status
                     $this->updateShopifyOrderAfterCreation($shopifyOrder['id']);
                     
-                    $this->logger->info('Successfully created order in PowerBody', [
+                    $this->logger->info('Successfully created order in PowerBody and updated Shopify', [
                         'shopify_order_id' => $shopifyOrder['id'],
                         'powerbody_order_id' => $powerbodyOrder['id']
                     ]);
                     return true;
                     
                 case 'ALREADY_EXISTS':
-                    // Order already exists in PowerBody
-                    $this->logger->warning('Order already exists in PowerBody', [
+                    $this->logger->warning('=== DEAD LETTER RETRY: Order already exists in PowerBody ===', [
                         'shopify_order_id' => $shopifyOrder['id'],
                         'powerbody_order_id' => $powerbodyOrder['id']
                     ]);
@@ -1565,16 +1632,37 @@ class OrderSync
                     
                 default:
                     // FAIL or other error
-                    $this->logger->error('Failed to create order in PowerBody', [
+                    $this->logger->error('=== DEAD LETTER RETRY: PowerBody creation failed ===', [
                         'shopify_order_id' => $shopifyOrder['id'],
                         'powerbody_order_id' => $powerbodyOrder['id'],
-                        'api_response' => $apiResponse
+                        'api_response' => $apiResponse,
+                        'full_response' => $response,
+                        'sent_data' => $powerbodyOrder
                     ]);
+                    
+                    // Try to provide more specific error information
+                    if ($apiResponse === 'FAIL') {
+                        $this->logger->error('PowerBody returned FAIL - possible causes', [
+                            'order_data_sent' => $powerbodyOrder,
+                            'possible_causes' => [
+                                'Invalid product SKUs',
+                                'Insufficient stock',
+                                'Invalid address format',
+                                'PowerBody system error',
+                                'Duplicate order detection'
+                            ]
+                        ]);
+                    }
+                    
                     return false;
             }
         } catch (Exception $e) {
-            $this->logger->error('Exception while retrying order in PowerBody: ' . $e->getMessage(), [
-                'shopify_order_id' => $shopifyOrder['id']
+            $this->logger->error('=== DEAD LETTER RETRY: Exception occurred ===', [
+                'shopify_order_id' => $shopifyOrder['id'],
+                'exception_message' => $e->getMessage(),
+                'exception_file' => $e->getFile(),
+                'exception_line' => $e->getLine(),
+                'exception_trace' => $e->getTraceAsString()
             ]);
             return false;
         }

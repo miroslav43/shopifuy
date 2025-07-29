@@ -17,6 +17,8 @@ composer.lock
 /storage/cache/
 /storage/debug/
 
+# Sync
+storage
 
 # IDE
 .idea/
@@ -29,3 +31,6 @@ composer.lock
 Thumbs.db 
 
 *.bat
+
+# Sync
+storage/
